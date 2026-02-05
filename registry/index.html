@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registry of Athlete and Arts Performer</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background: #f2f2f2;
+    display: flex;
+    justify-content: center;
+    padding: 30px;
+}
+
+.container {
+    width: 420px;
+}
+
+.form-box {
+    background: #fff;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.hidden {
+    display: none;
+}
+
+.title {
+    text-align: center;
+    margin-bottom: 5px;
+}
+
+.subtitle {
+    text-align: center;
+    font-size: 12px;
+    margin-bottom: 20px;
+    color: #555;
+}
+
+label {
+    display: block;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+input, select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 4px;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 20px;
+    background: #6a5acd;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #5a4acb;
+}
+
+.switch {
+    text-align: center;
+    margin-top: 15px;
+    font-size: 14px;
+}
+
+.switch a {
+    color: #6a5acd;
+    text-decoration: none;
+}
+
+.name-row {
+    display: flex;
+    gap: 8px;
+}
+
+.name-row div {
+    flex: 1;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- LOGIN -->
+<div class="form-box" id="loginForm">
+    <h1 class="title">REGISTRY</h1>
+    <p class="subtitle">OF ATHLETE AND ARTS PERFORMER</p>
+
+    <label>Email *</label>
+    <input type="email">
+
+    <label>Password *</label>
+    <input type="password">
+
+    <button>LOGIN</button>
+
+    <p class="switch">
+        Don't have an account?
+        <a href="#" onclick="showRegister()">Register</a>
+    </p>
+</div>
+
+<!-- REGISTER -->
+<form class="form-box hidden" id="registerForm" method="POST" action="register.php">
+
+    <h1 class="title">REGISTRY</h1>
+    <p class="subtitle">OF ATHLETE AND ARTS PERFORMER</p>
+
+    <label>Username *</label>
+    <input type="text" name="username" required>
+
+    <label>Email *</label>
+    <input type="email" name="email" required>
+
+    <label>Password *</label>
+    <input type="password" name="password" required>
+
+    <label>ID Number *</label>
+    <input type="text" name="id_number" required>
+
+    <button type="submit">CREATE ACCOUNT</button>
+
+</form>
+
+
+    <label>Category *</label>
+    <select>
+        <option value="">-- Select Category --</option>
+        <option>Athlete</option>
+        <option>Arts Performer</option>
+    </select>
+
+    <label>Institution *</label>
+    <select>
+        <option>Bohol Island State University</option>
+    </select>
+
+    <label>Campus *</label>
+    <select>
+        <option value="">-- Select Campus --</option>
+        <option>Candijay Campus</option>
+        <option>Tagbilaran Campus</option>
+    </select>
+
+    <label>College *</label>
+    <select id="college" onchange="updateCourses()">
+        <option value="">-- Select College --</option>
+        <option value="CBM">College of Business Management</option>
+        <option value="CTE">College of Teacher Education</option>
+        <option value="CFMS">College of Fisheries and Marine Sciences</option>
+        <option value="CS">College of Sciences</option>
+    </select>
+
+    <label>Course *</label>
+    <select id="course">
+        <option value="">-- Select Course --</option>
+    </select>
+
+    <label>Program / Sport *</label>
+    <select>
+        <option>-- Select Program / Sport --</option>
+         <option>Basketball</option>
+    </select>
+
+    <button>CREATE ACCOUNT</button>
+
+    <p class="switch">
+        Already have an account?
+        <a href="#" onclick="showLogin()">Login</a>
+    </p>
+</div>
+
+</div>
+
+<script>
+function showRegister() {
+    document.getElementById("loginForm").classList.add("hidden");
+    document.getElementById("registerForm").classList.remove("hidden");
+}
+
+function showLogin() {
+    document.getElementById("registerForm").classList.add("hidden");
+    document.getElementById("loginForm").classList.remove("hidden");
+}
+
+const courses = {
+    CS: [
+        "BS Computer Science",
+        "BS Environmental Science"
+    ],
+    CBM: [
+        "BS Business Administration",
+        "BS Hospitality Management"
+    ],
+    CTE: [
+        "Elementary Education",
+        "Secondary Education"
+    ],
+    CFMS: [
+        "BS Fisheries",
+        "BS Marine Biology",
+        "BS Food Technology"
+    ]
+};
+
+function updateCourses() {
+    const college = document.getElementById("college").value;
+    const courseSelect = document.getElementById("course");
+
+    courseSelect.innerHTML = '<option value="">-- Select Course --</option>';
+
+    if (college && coursesByCollege[college]) {
+        coursesByCollege[college].forEach(course => {
+            const option = document.createElement("option");
+            option.value = course;
+            option.textContent = course;
+            courseSelect.appendChild(option);
+        });
+    }
+}
+</script>
+
+</body>
+</html>
