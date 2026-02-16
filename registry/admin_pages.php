@@ -40,14 +40,9 @@ $stats = [
     'recent_registrations' => 0
 ];
 
-$stmt = $pdo->query("SELECT COUNT(*) as count FROM users");
-$stats['total_users'] = $stmt->fetch()['count'];
-
 $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE user_type = 'student'");
 $stats['total_students'] = $stmt->fetch()['count'];
 
-$stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE user_type = 'admin'");
-$stats['total_admins'] = $stmt->fetch()['count'];
 
 $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE user_type = 'faculty'");
 $stats['total_faculty'] = $stmt->fetch()['count'];
@@ -146,45 +141,29 @@ if ($hour < 12) {
                     <a href="register.php" class="btn btn-primary"><i class="fas fa-plus"></i> Add New User</a>
                 </div>
             </header>
-
-            <!-- Stats Grid -->
-            <div class="stats-grid">
-                <div class="stat-card stat-total">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-info">
-                        <h3>TOTAL USERS</h3>
-                        <p class="stat-number"><?php echo number_format($stats['total_users']); ?></p>
-                        <p class="stat-change">+<?php echo min(15, $stats['total_users']); ?>% from last month</p>
-                    </div>
-                </div>
+            
                 
-                <div class="stat-card stat-students">
-                    <div class="stat-icon">🎓</div>
-                    <div class="stat-info">
-                        <h3>STUDENTS</h3>
-                        <p class="stat-number"><?php echo number_format($stats['total_students']); ?></p>
-                        <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_students'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
-                    </div>
-                </div>
+           <!-- Stats Grid -->
+<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 30px;">
+    <div class="stat-card stat-students">
+        <div class="stat-icon">🎓</div>
+        <div class="stat-info">
+            <h3>STUDENTS</h3>
+            <p class="stat-number"><?php echo number_format($stats['total_students']); ?></p>
+            <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_students'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
+        </div>
+    </div>
+    
+    <div class="stat-card stat-faculty">
+        <div class="stat-icon">👨‍🏫</div>
+        <div class="stat-info">
+            <h3>FACULTY</h3>
+            <p class="stat-number"><?php echo number_format($stats['total_faculty']); ?></p>
+            <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_faculty'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
+        </div>
+    </div>
+</div>
                 
-                <div class="stat-card stat-faculty">
-                    <div class="stat-icon">👨‍🏫</div>
-                    <div class="stat-info">
-                        <h3>FACULTY</h3>
-                        <p class="stat-number"><?php echo number_format($stats['total_faculty']); ?></p>
-                        <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_faculty'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card stat-admins">
-                    <div class="stat-icon">👑</div>
-                    <div class="stat-info">
-                        <h3>ADMINS</h3>
-                        <p class="stat-number"><?php echo number_format($stats['total_admins']); ?></p>
-                        <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_admins'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
-                    </div>
-                </div>
-            </div>
 
             <!-- Dashboard Sections -->
             <div class="dashboard-sections">

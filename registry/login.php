@@ -463,7 +463,7 @@ if(isset($_SESSION['user_id'])) {
     <div class="talentrix-login-container">
         <div class="talentrix-header">
             <div class="talentrix-logo">TALENTRIX</div>
-            <div class="talentrix-tagline">TALENT & GRADUATE MANAGEMENT SYSTEM</div>
+            <div class="talentrix-tagline">TALENT SYSTEM</div>
             <div class="login-subtitle">Login to Your Account</div>
         </div>
         

@@ -29,7 +29,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     $department = isset($_POST['department']) ? trim($_POST['department']) : '';
     
     // Faculty-specific fields
-    $category = $user_type; // category same as user_type
+    $category = $user_type;
     $position = '';
     $specialization = isset($_POST['specialization']) ? trim($_POST['specialization']) : '';
     $years_experience = isset($_POST['years_experience']) ? (int)$_POST['years_experience'] : 0;
@@ -41,9 +41,9 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     $admin_level = '';
     $is_verified = 0;
     $verification_token = bin2hex(random_bytes(16));
-    $status = 'pending'; // Default status for new registrations
+    $status = 'pending';
     
-    // Validation
+
     $errors = [];
     
     if(empty($first_name) || empty($last_name) || empty($email) || empty($username) || empty($password) || empty($id_number)) {
@@ -62,10 +62,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         $errors[] = 'Invalid email format!';
     }
     
-    // ✅✅✅ ID Number validation based on user type
     if($user_type == 'student') {
-        // Student ID format: YYYY-##### (e.g., 2023-00123)
-        // Allow only numbers and dash
         if(!preg_match('/^\d{4}-\d{5}$/', $id_number)) {
             $errors[] = 'Invalid Student ID format. Must be: YYYY-##### (Example: 2023-00123)';
         }
@@ -74,18 +71,14 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             $errors[] = 'Student ID should contain numbers and dash only (no letters).';
         }
     } elseif($user_type == 'faculty') {
-        // Faculty ID format: ABC-YYYY### (e.g., FAC-2024001)
         if(!preg_match('/^[A-Za-z]{2,4}-\d{4}\d{0,3}$/', $id_number)) {
             $errors[] = 'Invalid Faculty ID format. Must be: ABC-YYYY### (Example: FAC-2024001)';
         }
-        // Convert to uppercase for consistency
         $id_number = strtoupper($id_number);
     } elseif($user_type == 'admin') {
-        // Admin ID format: ADMIN-### (e.g., ADMIN-001)
         if(!preg_match('/^ADMIN-\d{3}$/i', $id_number)) {
             $errors[] = 'Invalid Admin ID format. Must be: ADMIN-### (Example: ADMIN-001)';
         }
-        // Convert to uppercase for consistency
         $id_number = strtoupper($id_number);
     }
     
@@ -103,7 +96,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         if(empty($specialization) || $specialization == '-- Select Specialization --') {
             $errors[] = 'Please select a specialization!';
         }
-        // Store specialization in position field since we don't have specialization column
         $position = $specialization;
     }
     
@@ -138,7 +130,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
     
     if(empty($errors)) {
-        // Hash password
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
         
         // Insert user with available fields
@@ -164,7 +155,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $stmt2->execute([$user_id, $specialization, $years_experience]);
                 }
                 
-                // ✅✅✅ FIXED: JAVASCRIPT REDIRECT TO LOGIN PAGE ✅✅✅
                 $_SESSION['registration_success'] = 'Registration successful! Your account is pending verification.';
                 
                 echo '<!DOCTYPE html>
@@ -199,7 +189,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Get institutions for dropdown (Hardcoded for now)
 function getInstitutions($pdo) {
     // Check if database has records
     $stmt = $pdo->query("SELECT COUNT(*) as count FROM institutions");
@@ -210,7 +199,6 @@ function getInstitutions($pdo) {
         $stmt = $pdo->query("SELECT id, name FROM institutions ORDER BY name");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        // Hardcoded options
         return [
             ['id' => 1, 'name' => 'Bohol Island State University'],
             ['id' => 2, 'name' => 'Other Institution']
@@ -235,12 +223,7 @@ function getCampuses($pdo, $institution_id = null) {
     } else {
         // Hardcoded options for BISU
         $bisuCampuses = [
-            ['id' => 1, 'name' => 'Tagbilaran Campus'],
-            ['id' => 2, 'name' => 'Candijay Campus'],
-            ['id' => 3, 'name' => 'Balilihan Campus'],
-            ['id' => 4, 'name' => 'Bilar Campus'],
-            ['id' => 5, 'name' => 'Calape Campus'],
-            ['id' => 6, 'name' => 'Clarin Campus']
+            ['id' => 1, 'name' => 'Candijay Campus'],
         ];
         
         if($institution_id == 1) { // BISU
@@ -271,8 +254,7 @@ function getDepartments($pdo, $campus_id = null) {
             ['id' => 1, 'name' => 'College of Business Management'],
             ['id' => 2, 'name' => 'College of Teacher Education'],
             ['id' => 3, 'name' => 'College of Fisheries and Marine Sciences'],
-            ['id' => 4, 'name' => 'College of Sciences'],
-            ['id' => 5, 'name' => 'Other Department']
+            ['id' => 4, 'name' => 'College of Sciences']
         ];
     }
 }
@@ -290,14 +272,10 @@ function getSpecializations($pdo) {
         // Hardcoded specializations
         return [
             ['id' => 1, 'name' => 'Sports Coaching'],
-            ['id' => 2, 'name' => 'Academic Advising'],
-            ['id' => 3, 'name' => 'Career Counseling'],
-            ['id' => 4, 'name' => 'Research Mentoring'],
-            ['id' => 5, 'name' => 'Leadership Training'],
-            ['id' => 6, 'name' => 'Skill Development'],
-            ['id' => 7, 'name' => 'Project Supervision'],
-            ['id' => 8, 'name' => 'Thesis Advising'],
-            ['id' => 9, 'name' => 'Other Specialization']
+            ['id' => 2, 'name' => 'Career Counseling'],
+            ['id' => 3, 'name' => 'Leadership Training'],
+            ['id' => 4, 'name' => 'Skill Development'],
+            ['id' => 5, 'name' => 'Other Specialization']
         ];
     }
 }

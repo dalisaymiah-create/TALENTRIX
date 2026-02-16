@@ -8,19 +8,30 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'admin') {
     exit();
 }
 
+// Get current user info
+$user_id = $_SESSION['user_id'];
+$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->execute([$user_id]);
+$current_user = $stmt->fetch();
+
+// Set session variables if not set
+if (!isset($_SESSION['full_name']) && $current_user) {
+    $_SESSION['full_name'] = $current_user['first_name'] . ' ' . $current_user['last_name'];
+    $_SESSION['email'] = $current_user['email'];
+}
+
 // Get statistics
-$total_users = $pdo->query("SELECT COUNT(*) as total FROM users")->fetch()['total'];
-$total_admins = $pdo->query("SELECT COUNT(*) as admins FROM users WHERE user_type = 'admin'")->fetch()['admins'];
 $total_students = $pdo->query("SELECT COUNT(*) as students FROM users WHERE user_type = 'student'")->fetch()['students'];
 $total_faculty = $pdo->query("SELECT COUNT(*) as faculty FROM users WHERE user_type = 'faculty'")->fetch()['faculty'];
+$total_admins = $pdo->query("SELECT COUNT(*) as admins FROM users WHERE user_type = 'admin'")->fetch()['admins'];
+$total_users = $pdo->query("SELECT COUNT(*) as total FROM users")->fetch()['total'];
+
+// Calculate percentages
+$student_percent = $total_users > 0 ? round(($total_students / $total_users) * 100, 1) : 0;
+$faculty_percent = $total_users > 0 ? round(($total_faculty / $total_users) * 100, 1) : 0;
 
 $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 10")->fetchAll();
 $user_types = $pdo->query("SELECT user_type, COUNT(*) as count FROM users GROUP BY user_type")->fetchAll();
-
-// Calculate percentages
-$admin_percent = $total_users > 0 ? round(($total_admins / $total_users) * 100, 1) : 0;
-$student_percent = $total_users > 0 ? round(($total_students / $total_users) * 100, 1) : 0;
-$faculty_percent = $total_users > 0 ? round(($total_faculty / $total_users) * 100, 1) : 0;
 
 // Get greeting based on time
 $hour = date('H');
@@ -47,8 +58,8 @@ if ($hour < 12) {
         <div class="sidebar">
             <div class="sidebar-header">
                 <h2><i class="fas fa-crown"></i> Admin Panel</h2>
-                <p class="admin-info">Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?></p>
-                <p class="admin-email"><?php echo htmlspecialchars($_SESSION['email']); ?></p>
+                <p class="admin-info">Welcome, <?php echo htmlspecialchars($_SESSION['full_name'] ?? $current_user['first_name']); ?></p>
+                <p class="admin-email"><?php echo htmlspecialchars($_SESSION['email'] ?? $current_user['email']); ?></p>
             </div>
             
             <nav class="sidebar-nav">
@@ -76,7 +87,7 @@ if ($hour < 12) {
                 <div>
                     <h1>DASHBOARD</h1>
                     <p style="color: #718096; margin-top: 5px; font-size: 16px;">
-                        <?php echo $greeting; ?>, <?php echo htmlspecialchars($_SESSION['full_name']); ?>! Here's your overview.
+                        <?php echo $greeting; ?>, <?php echo htmlspecialchars($_SESSION['full_name'] ?? $current_user['first_name']); ?>! Here's your overview.
                     </p>
                 </div>
                 <div class="header-actions">
@@ -85,17 +96,8 @@ if ($hour < 12) {
                 </div>
             </header>
 
-            <!-- Stats Grid -->
-            <div class="stats-grid">
-                <div class="stat-card stat-total">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-info">
-                        <h3>TOTAL USERS</h3>
-                        <p class="stat-number"><?php echo $total_users; ?></p>
-                        <p class="stat-change">+<?php echo min(15, $total_users); ?>% from last month</p>
-                    </div>
-                </div>
-                
+            <!-- Stats Grid - FIXED: Now side by side -->
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 30px;">
                 <div class="stat-card stat-students">
                     <div class="stat-icon">🎓</div>
                     <div class="stat-info">
@@ -111,15 +113,6 @@ if ($hour < 12) {
                         <h3>FACULTY</h3>
                         <p class="stat-number"><?php echo $total_faculty; ?></p>
                         <p class="stat-change"><?php echo $faculty_percent; ?>% of total</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card stat-admins">
-                    <div class="stat-icon">👑</div>
-                    <div class="stat-info">
-                        <h3>ADMINS</h3>
-                        <p class="stat-number"><?php echo $total_admins; ?></p>
-                        <p class="stat-change"><?php echo $admin_percent; ?>% of total</p>
                     </div>
                 </div>
             </div>
@@ -185,7 +178,7 @@ if ($hour < 12) {
                                                 <div class="user-avatar-small"><?php echo strtoupper(substr($user['first_name'], 0, 1)); ?></div>
                                                 <div>
                                                     <strong><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></strong><br>
-                                                    <small style="color: #718096;">ID: <?php echo htmlspecialchars($user['id_number']); ?></small>
+                                                    <small style="color: #718096;">ID: <?php echo htmlspecialchars($user['id_number'] ?? $user['id']); ?></small>
                                                 </div>
                                             </div>
                                         </td>
@@ -237,16 +230,16 @@ if ($hour < 12) {
                         </div>
                         <div class="connected-stats">
                             <div class="stat-item">
-                                <div class="stat-item-label">Total</div>
+                                <div class="stat-item-label">Total Users</div>
                                 <div class="stat-item-value"><?php echo $total_users; ?></div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-item-label">Connected</div>
+                                <div class="stat-item-label">Students + Faculty</div>
                                 <div class="stat-item-value"><?php echo $total_students + $total_faculty; ?></div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-item-label">Active</div>
-                                <div class="stat-item-value"><?php echo $total_users - $total_admins; ?></div>
+                                <div class="stat-item-label">Admins</div>
+                                <div class="stat-item-value"><?php echo $total_admins; ?></div>
                             </div>
                         </div>
                         

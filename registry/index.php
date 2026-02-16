@@ -12,7 +12,7 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TALENTRIX - Talent & Graduate Management System</title>
+    <title>TALENTRIX - Talent System</title>
     <link rel="stylesheet" href="style.css">
     <style>
         /* TALENTRIX Homepage Styles */
@@ -320,7 +320,7 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
     </nav>
 
     <div class="talentrix-hero">
-        <h1>Talent & Graduate Management System</h1>
+        <h1>Talent Management System</h1>
         <p>Designed to manage, track, and organize records of athletes, performers, and graduates. Provides efficient data management, reporting, and monitoring for schools and organizations.</p>
         
         <div class="talentrix-hero-stats">
@@ -341,57 +341,3 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             </div>
         <?php endif; ?>
     </div>
-
-    <?php if($recent_users): ?>
-    <div class="talentrix-section">
-        <h2>Recent Registrations</h2>
-        <div class="talentrix-user-cards">
-            <?php foreach($recent_users as $user): ?>
-            <div class="talentrix-user-card">
-                <div class="talentrix-user-avatar">
-                    <?php echo strtoupper(substr($user['first_name'], 0, 1)); ?>
-                </div>
-                <h3><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></h3>
-                <p><strong>ID:</strong> <?php echo htmlspecialchars($user['id_number']); ?></p>
-                <?php if($user['institution']): ?>
-                    <p><strong>Institution:</strong> <?php echo htmlspecialchars($user['institution']); ?></p>
-                <?php endif; ?>
-                <p><strong>Type:</strong> 
-                    <span class="badge badge-<?php echo $user['user_type']; ?>">
-                        <?php echo htmlspecialchars($user['user_type']); ?>
-                    </span>
-                </p>
-                <p><small>Joined: <?php echo date('M d, Y', strtotime($user['created_at'])); ?></small></p>
-            </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <div class="talentrix-section">
-        <h2>Core Features</h2>
-        <div class="talentrix-features-grid">
-            <div class="talentrix-feature">
-                <div class="talentrix-feature-icon">📋</div>
-                <h3>Talent Profile Management</h3>
-                <p>Comprehensive tracking of athletes, performers, and graduate records in one centralized platform</p>
-            </div>
-            <div class="talentrix-feature">
-                <div class="talentrix-feature-icon">📊</div>
-                <h3>Performance Analytics</h3>
-                <p>AI-driven insights into talent development, achievement tracking, and performance metrics</p>
-            </div>
-            <div class="talentrix-feature">
-                <div class="talentrix-feature-icon">🔒</div>
-                <h3>Secure Data Management</h3>
-                <p>Role-based access control with institutional verification for sensitive talent data</p>
-            </div>
-        </div>
-    </div>
-
-    <footer class="talentrix-footer">
-        <p>© 2024 TALENTRIX - Talent & Graduate Management System. All rights reserved.</p>
-        <p style="margin-top: 10px; font-size: 14px;">Bohol Island State University | Academic Technology Division</p>
-    </footer>
-</body>
-</html>
