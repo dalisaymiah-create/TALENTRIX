@@ -223,7 +223,12 @@ function getCampuses($pdo, $institution_id = null) {
     } else {
         // Hardcoded options for BISU
         $bisuCampuses = [
-            ['id' => 1, 'name' => 'Candijay Campus'],
+            ['id' => 1, 'name' => 'Tagbilaran Campus'],
+            ['id' => 2, 'name' => 'Candijay Campus'],
+            ['id' => 3, 'name' => 'Balilihan Campus'],
+            ['id' => 4, 'name' => 'Bilar Campus'],
+            ['id' => 5, 'name' => 'Calape Campus'],
+            ['id' => 6, 'name' => 'Clarin Campus']
         ];
         
         if($institution_id == 1) { // BISU
@@ -254,7 +259,8 @@ function getDepartments($pdo, $campus_id = null) {
             ['id' => 1, 'name' => 'College of Business Management'],
             ['id' => 2, 'name' => 'College of Teacher Education'],
             ['id' => 3, 'name' => 'College of Fisheries and Marine Sciences'],
-            ['id' => 4, 'name' => 'College of Sciences']
+            ['id' => 4, 'name' => 'College of Sciences'],
+            ['id' => 5, 'name' => 'Other Department']
         ];
     }
 }

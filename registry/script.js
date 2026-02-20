@@ -1,5 +1,3 @@
-// script.js - Optional JavaScript for interactivity
-
 document.addEventListener('DOMContentLoaded', function() {
     // Form validation for password match
     const password = document.getElementById('password');
@@ -29,7 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Auto-hide alerts after 5 seconds
+    // Auto-hide alerts after
     const alerts = document.querySelectorAll('.alert');
     alerts.forEach(alert => {
         setTimeout(() => {

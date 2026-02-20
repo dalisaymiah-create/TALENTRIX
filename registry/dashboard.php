@@ -26,12 +26,21 @@ $total_faculty = $pdo->query("SELECT COUNT(*) as faculty FROM users WHERE user_t
 $total_admins = $pdo->query("SELECT COUNT(*) as admins FROM users WHERE user_type = 'admin'")->fetch()['admins'];
 $total_users = $pdo->query("SELECT COUNT(*) as total FROM users")->fetch()['total'];
 
+// Get homepage stats
+$total_achievements = $pdo->query("SELECT COUNT(*) as count FROM homepage_content")->fetch()['count'];
+$total_events = $pdo->query("SELECT COUNT(*) as count FROM upcoming_events")->fetch()['count'];
+$total_images = $pdo->query("SELECT COUNT(*) as count FROM homepage_images")->fetch()['count'];
+
 // Calculate percentages
 $student_percent = $total_users > 0 ? round(($total_students / $total_users) * 100, 1) : 0;
 $faculty_percent = $total_users > 0 ? round(($total_faculty / $total_users) * 100, 1) : 0;
 
 $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 10")->fetchAll();
 $user_types = $pdo->query("SELECT user_type, COUNT(*) as count FROM users GROUP BY user_type")->fetchAll();
+
+// Get recent homepage activity
+$recent_achievements = $pdo->query("SELECT * FROM homepage_content ORDER BY created_at DESC LIMIT 5")->fetchAll();
+$recent_events = $pdo->query("SELECT * FROM upcoming_events WHERE event_date >= CURDATE() ORDER BY event_date ASC LIMIT 5")->fetchAll();
 
 // Get greeting based on time
 $hour = date('H');
@@ -51,6 +60,146 @@ if ($hour < 12) {
     <title>Admin Dashboard - Registry System</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Additional styles for homepage management */
+        .stat-card.homepage {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        
+        .stat-card.images {
+            background: linear-gradient(135deg, #8B1E3F 0%, #6b152f 100%);
+        }
+        
+        .stat-card.events {
+            background: linear-gradient(135deg, #FFB347 0%, #f39c12 100%);
+        }
+        
+        .admin-pages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .admin-page-link {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px 10px;
+            background: #f8fafc;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #4a5568;
+            transition: all 0.3s;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        
+        .admin-page-link:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            background: white;
+            border-color: #10b981;
+        }
+        
+        .admin-page-link.homepage {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+        
+        .admin-page-link.images {
+            background: linear-gradient(135deg, #8B1E3F 0%, #6b152f 100%);
+            color: white;
+        }
+        
+        .page-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .admin-page-link span:last-child {
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .homepage-activity-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .activity-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .activity-card h4 {
+            color: #0a2540;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        
+        .activity-badge {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .badge-athletics { background: #8B1E3F; color: white; }
+        .badge-dance { background: #FFB347; color: #1e3e5c; }
+        
+        .activity-details {
+            flex: 1;
+        }
+        
+        .activity-title {
+            font-weight: 600;
+            color: #0a2540;
+            font-size: 0.9rem;
+        }
+        
+        .activity-meta {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+        
+        .view-all-link {
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+            padding: 8px;
+            background: #f8fafc;
+            border-radius: 8px;
+            color: #10b981;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .view-all-link:hover {
+            background: #e2e8f0;
+        }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
@@ -66,6 +215,11 @@ if ($hour < 12) {
                 <ul>
                     <li class="active"><a href="dashboard.php"><i class="fas fa-chart-bar"></i> <span>Dashboard</span></a></li>
                     <li><a href="manage_users.php"><i class="fas fa-users"></i> <span>Manage Users</span></a></li>
+                    
+                    <!-- Homepage Management Section -->
+                    <li><a href="manage_homepage.php"><i class="fas fa-home"></i> <span>Manage Homepage</span></a></li>
+                    <li><a href="manage_images.php"><i class="fas fa-images"></i> <span>Homepage Images</span></a></li>
+                    
                     <li><a href="tables.php"><i class="fas fa-table"></i> <span>Tables</span></a></li>
                     <li><a href="charts.php"><i class="fas fa-chart-pie"></i> <span>Charts</span></a></li>
                     <li><a href="profile.php"><i class="fas fa-user"></i> <span>Profile</span></a></li>
@@ -74,7 +228,7 @@ if ($hour < 12) {
                     <li><a href="tasks.php"><i class="fas fa-tasks"></i> <span>Tasks</span></a></li>
                     <li><a href="forms.php"><i class="fas fa-file-alt"></i> <span>Forms</span></a></li>
                     <li class="divider"></li>
-                    <li><a href="index.php"><i class="fas fa-home"></i> <span>Homepage</span></a></li>
+                    <li><a href="index.php"><i class="fas fa-eye"></i> <span>View Homepage</span></a></li>
                     <li><a href="logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a></li>
                 </ul>
             </nav>
@@ -96,8 +250,8 @@ if ($hour < 12) {
                 </div>
             </header>
 
-            <!-- Stats Grid - FIXED: Now side by side -->
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 30px;">
+            <!-- Stats Grid - 4 columns -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; margin-bottom: 30px;">
                 <div class="stat-card stat-students">
                     <div class="stat-icon">🎓</div>
                     <div class="stat-info">
@@ -113,6 +267,25 @@ if ($hour < 12) {
                         <h3>FACULTY</h3>
                         <p class="stat-number"><?php echo $total_faculty; ?></p>
                         <p class="stat-change"><?php echo $faculty_percent; ?>% of total</p>
+                    </div>
+                </div>
+                
+                <!-- Homepage Stats -->
+                <div class="stat-card homepage">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-info">
+                        <h3>ACHIEVEMENTS</h3>
+                        <p class="stat-number"><?php echo $total_achievements; ?></p>
+                        <p class="stat-change">On homepage</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card events">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-info">
+                        <h3>EVENTS</h3>
+                        <p class="stat-number"><?php echo $total_events; ?></p>
+                        <p class="stat-change">Upcoming</p>
                     </div>
                 </div>
             </div>
@@ -241,6 +414,10 @@ if ($hour < 12) {
                                 <div class="stat-item-label">Admins</div>
                                 <div class="stat-item-value"><?php echo $total_admins; ?></div>
                             </div>
+                            <div class="stat-item">
+                                <div class="stat-item-label">Total Images</div>
+                                <div class="stat-item-value"><?php echo $total_images; ?></div>
+                            </div>
                         </div>
                         
                         <div style="margin-top: 25px; padding-top: 25px; border-top: 2px solid #f1f5f9;">
@@ -249,11 +426,14 @@ if ($hour < 12) {
                                 <a href="register.php" class="btn btn-primary" style="justify-content: center;">
                                     <i class="fas fa-user-plus"></i> Add User
                                 </a>
+                                <a href="manage_homepage.php" class="btn" style="background: #10b981; color: white; justify-content: center;">
+                                    <i class="fas fa-home"></i> Manage Homepage
+                                </a>
+                                <a href="manage_images.php" class="btn" style="background: #8B1E3F; color: white; justify-content: center;">
+                                    <i class="fas fa-images"></i> Upload Images
+                                </a>
                                 <a href="reports.php" class="btn" style="background: #f8fafc; color: #4a5568; justify-content: center;">
                                     <i class="fas fa-file-export"></i> Generate Report
-                                </a>
-                                <a href="backup.php" class="btn" style="background: #f8fafc; color: #4a5568; justify-content: center;">
-                                    <i class="fas fa-database"></i> Backup Data
                                 </a>
                             </div>
                         </div>
@@ -282,12 +462,83 @@ if ($hour < 12) {
                 </div>
             </div>
 
+            <!-- Homepage Activity Section -->
+            <div class="dashboard-card" style="margin-top: 30px;">
+                <div class="card-header">
+                    <h3><i class="fas fa-home"></i> HOMEPAGE ACTIVITY</h3>
+                    <div>
+                        <a href="manage_homepage.php" class="btn btn-outline" style="margin-right: 10px;">Manage</a>
+                        <a href="index.php" class="btn btn-primary">View Homepage</a>
+                    </div>
+                </div>
+                
+                <div class="homepage-activity-grid">
+                    <!-- Recent Achievements -->
+                    <div class="activity-card">
+                        <h4><i class="fas fa-trophy" style="color: #FFB347;"></i> Recent Achievements</h4>
+                        <?php if(empty($recent_achievements)): ?>
+                            <p style="color: #718096; text-align: center; padding: 20px;">No achievements yet</p>
+                        <?php else: ?>
+                            <?php foreach($recent_achievements as $ach): ?>
+                            <div class="activity-item">
+                                <div class="activity-badge <?php echo $ach['section_type'] == 'athletics' ? 'badge-athletics' : 'badge-dance'; ?>">
+                                    <?php echo $ach['section_type'] == 'athletics' ? '🏀' : '💃'; ?>
+                                </div>
+                                <div class="activity-details">
+                                    <div class="activity-title"><?php echo htmlspecialchars($ach['title']); ?></div>
+                                    <div class="activity-meta">
+                                        <?php echo date('M d, Y', strtotime($ach['post_date'])); ?> • 
+                                        <?php echo $ach['badge']; ?>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                        <a href="manage_homepage.php" class="view-all-link">View All Achievements →</a>
+                    </div>
+                    
+                    <!-- Upcoming Events -->
+                    <div class="activity-card">
+                        <h4><i class="fas fa-calendar-alt" style="color: #10b981;"></i> Upcoming Events</h4>
+                        <?php if(empty($recent_events)): ?>
+                            <p style="color: #718096; text-align: center; padding: 20px;">No upcoming events</p>
+                        <?php else: ?>
+                            <?php foreach($recent_events as $event): ?>
+                            <div class="activity-item">
+                                <div class="activity-badge" style="background: <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>; color: white;">
+                                    <?php echo $event['event_type'] == 'athletics' ? '🏃' : '💃'; ?>
+                                </div>
+                                <div class="activity-details">
+                                    <div class="activity-title"><?php echo htmlspecialchars($event['event_title']); ?></div>
+                                    <div class="activity-meta">
+                                        <?php echo date('M d, Y', strtotime($event['event_date'])); ?> • 
+                                        <?php echo ucfirst($event['event_type']); ?>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                        <a href="manage_homepage.php#events" class="view-all-link">View All Events →</a>
+                    </div>
+                </div>
+            </div>
+
             <!-- Quick Access to Admin Pages -->
             <div class="dashboard-card">
                 <div class="card-header">
-                    <h3><i class="fas fa-bolt"></i> QUICK ACCESS TO ADMIN PAGES</h3>
+                    <h3><i class="fas fa-bolt"></i> QUICK ACCESS</h3>
                 </div>
                 <div class="admin-pages-grid">
+                    <!-- Homepage Management Quick Links -->
+                    <a href="manage_homepage.php" class="admin-page-link homepage">
+                        <span class="page-icon">🏠</span>
+                        <span>Manage Homepage</span>
+                    </a>
+                    <a href="manage_images.php" class="admin-page-link images">
+                        <span class="page-icon">📸</span>
+                        <span>Homepage Images</span>
+                    </a>
+                    
                     <a href="tables.php" class="admin-page-link">
                         <span class="page-icon">📋</span>
                         <span>Tables</span>
@@ -319,6 +570,14 @@ if ($hour < 12) {
                     <a href="utilities-other.php" class="admin-page-link">
                         <span class="page-icon">🔧</span>
                         <span>Other</span>
+                    </a>
+                    <a href="profile.php" class="admin-page-link">
+                        <span class="page-icon">👤</span>
+                        <span>Profile</span>
+                    </a>
+                    <a href="settings.php" class="admin-page-link">
+                        <span class="page-icon">⚙️</span>
+                        <span>Settings</span>
                     </a>
                 </div>
             </div>
