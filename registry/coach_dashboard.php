@@ -1,7 +1,10 @@
 <?php
-// coach_dashboard.php - FIXED APPROVALS QUERY
+// coach_dashboard.php - COMPLETE FIXED VERSION
 session_start();
 require_once 'db.php';
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 // IMPORTANT: Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
@@ -32,22 +35,7 @@ if ($_SESSION['user_type'] !== 'sport_coach') {
 $user_id = $_SESSION['user_id'];
 
 // Get coach details
-$stmt = $pdo->prepare("
-    SELECT c.*, u.first_name, u.last_name, u.email, u.id_number
-    FROM coaches c
-    JOIN users u ON c.user_id = u.id
-    WHERE u.id = ?
-");
-$stmt->execute([$user_id]);
-$coach = $stmt->fetch();
-
-// If coach not found, create basic coach record
-if (!$coach) {
-    // Insert into coaches table
-    $stmt = $pdo->prepare("INSERT INTO coaches (user_id, employee_id, date_hired) VALUES (?, ?, CURDATE())");
-    $stmt->execute([$user_id, 'COACH-' . $user_id]);
-    
-    // Fetch again
+try {
     $stmt = $pdo->prepare("
         SELECT c.*, u.first_name, u.last_name, u.email, u.id_number
         FROM coaches c
@@ -56,10 +44,46 @@ if (!$coach) {
     ");
     $stmt->execute([$user_id]);
     $coach = $stmt->fetch();
+} catch (Exception $e) {
+    error_log("Error fetching coach: " . $e->getMessage());
+    $coach = null;
+}
+
+// If coach not found, create basic coach record
+if (!$coach) {
+    try {
+        // First check if user exists
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name, email, id_number FROM users WHERE id = ?");
+        $stmt->execute([$user_id]);
+        $user = $stmt->fetch();
+        
+        if ($user) {
+            // Insert into coaches table
+            $stmt = $pdo->prepare("INSERT INTO coaches (user_id, employee_id, date_hired, primary_sport) VALUES (?, ?, CURDATE(), 'Basketball')");
+            $employee_id = 'COACH-' . $user_id . '-' . date('Y');
+            $stmt->execute([$user_id, $employee_id]);
+            
+            // Fetch again
+            $stmt = $pdo->prepare("
+                SELECT c.*, u.first_name, u.last_name, u.email, u.id_number
+                FROM coaches c
+                JOIN users u ON c.user_id = u.id
+                WHERE u.id = ?
+            ");
+            $stmt->execute([$user_id]);
+            $coach = $stmt->fetch();
+        }
+    } catch (Exception $e) {
+        error_log("Error creating coach: " . $e->getMessage());
+        $_SESSION['error'] = "Error setting up coach profile. Please contact administrator.";
+    }
 }
 
 // Get coach initials for avatar
-$coach_initials = strtoupper(substr($coach['first_name'] ?? 'C', 0, 1) . substr($coach['last_name'] ?? 'T', 0, 1));
+$coach_initials = 'CT';
+if ($coach && isset($coach['first_name']) && isset($coach['last_name'])) {
+    $coach_initials = strtoupper(substr($coach['first_name'], 0, 1) . substr($coach['last_name'], 0, 1));
+}
 
 // Get pending approvals (students waiting for coach approval)
 $pending_approvals = [];
@@ -71,124 +95,164 @@ try {
             u.id_number,
             u.first_name,
             u.last_name,
-            'athlete' as student_type,
-            s.primary_sport as sport,
-            s.primary_position as position,
+            COALESCE(s.primary_sport, 'Basketball') as sport,
+            COALESCE(s.primary_position, 'Player') as position,
             s.athlete_category,
             s.jersey_number,
             a.request_date,
             a.status,
-            t.team_name
+            t.team_name,
+            t.id as team_id
         FROM approvals a
-        JOIN students s ON a.student_id = s.id
-        JOIN users u ON s.user_id = u.id
+        INNER JOIN students s ON a.student_id = s.id
+        INNER JOIN users u ON s.user_id = u.id
         LEFT JOIN teams t ON a.team_id = t.id
         WHERE a.coach_id = ? AND a.status = 'pending'
         ORDER BY a.request_date DESC
     ");
-    $stmt->execute([$user_id]); // coach_id in approvals is the USER ID
+    $stmt->execute([$_SESSION['user_id']]); // coach_id in approvals is the USER ID
     $pending_approvals = $stmt->fetchAll();
 } catch (Exception $e) {
+    error_log("Error fetching approvals: " . $e->getMessage());
     $pending_approvals = [];
 }
 
-// Get approved players (active team members) with stats
+// Get approved players (active team members) with stats - FIXED QUERY with error handling
 $team_players = [];
-try {
-    $stmt = $pdo->prepare("
-        SELECT 
-            s.id,
-            u.first_name,
-            u.last_name,
-            s.primary_sport,
-            s.primary_position as position,
-            s.athlete_category,
-            tm.jersey_number,
-            t.team_name,
-            tm.joined_date,
-            (SELECT COUNT(*) FROM achievements WHERE student_id = s.id) as achievements_count,
-            (SELECT COUNT(*) FROM attendance WHERE student_id = s.id AND status = 'present' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as attendance_count
-        FROM team_members tm
-        JOIN students s ON tm.student_id = s.id
-        JOIN users u ON s.user_id = u.id
-        JOIN teams t ON tm.team_id = t.id
-        WHERE t.coach_id = ? AND tm.status = 'active'
-        ORDER BY u.first_name ASC
-    ");
-    $stmt->execute([$coach['id']]);
-    $team_players = $stmt->fetchAll();
-} catch (Exception $e) {
-    $team_players = [];
+if (isset($coach['id'])) {
+    try {
+        // First get all teams for this coach
+        $team_ids = [];
+        $teams_check = $pdo->prepare("SELECT id FROM teams WHERE coach_id = ?");
+        $teams_check->execute([$coach['id']]);
+        $team_ids = $teams_check->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (!empty($team_ids)) {
+            $placeholders = implode(',', array_fill(0, count($team_ids), '?'));
+            $stmt = $pdo->prepare("
+                SELECT 
+                    s.id,
+                    u.first_name,
+                    u.last_name,
+                    s.primary_sport,
+                    COALESCE(s.primary_position, 'Player') as position,
+                    s.athlete_category,
+                    tm.jersey_number,
+                    t.team_name,
+                    tm.joined_date,
+                    (SELECT COUNT(*) FROM achievements WHERE student_id = s.id) as achievements_count,
+                    (SELECT COUNT(*) FROM attendance WHERE student_id = s.id AND status = 'present' AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as attendance_count
+                FROM team_members tm
+                INNER JOIN students s ON tm.student_id = s.id
+                INNER JOIN users u ON s.user_id = u.id
+                INNER JOIN teams t ON tm.team_id = t.id
+                WHERE tm.team_id IN ($placeholders) AND tm.status = 'active'
+                ORDER BY u.first_name ASC
+            ");
+            $stmt->execute($team_ids);
+            $team_players = $stmt->fetchAll();
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching team players: " . $e->getMessage());
+        $team_players = [];
+    }
 }
 
 // Get all teams under this coach
 $teams = [];
-try {
-    $stmt = $pdo->prepare("
-        SELECT t.*, s.sport_name, 
-               (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as player_count
-        FROM teams t
-        JOIN sports s ON t.sport_id = s.id
-        WHERE t.coach_id = ?
-        ORDER BY t.team_name
-    ");
-    $stmt->execute([$coach['id']]);
-    $teams = $stmt->fetchAll();
-} catch (Exception $e) {
-    $teams = [];
+if (isset($coach['id'])) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT t.*, COALESCE(s.sport_name, 'Basketball') as sport_name, 
+                   (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as player_count
+            FROM teams t
+            LEFT JOIN sports s ON t.sport_id = s.id
+            WHERE t.coach_id = ?
+            ORDER BY t.team_name
+        ");
+        $stmt->execute([$coach['id']]);
+        $teams = $stmt->fetchAll();
+    } catch (Exception $e) {
+        error_log("Error fetching teams: " . $e->getMessage());
+        $teams = [];
+    }
 }
 
 // Get recent achievements added by coach
 $recent_achievements = [];
-try {
-    $stmt = $pdo->prepare("
-        SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) as student_name,
-               CASE a.medal_type
-                   WHEN 'gold' THEN '🥇'
-                   WHEN 'silver' THEN '🥈'
-                   WHEN 'bronze' THEN '🥉'
-                   ELSE '🏆'
-               END as medal_icon
-        FROM achievements a
-        JOIN students s ON a.student_id = s.id
-        JOIN users u ON s.user_id = u.id
-        WHERE a.verified_by = ?
-        ORDER BY a.created_at DESC
-        LIMIT 5
-    ");
-    $stmt->execute([$coach['id']]);
-    $recent_achievements = $stmt->fetchAll();
-} catch (Exception $e) {
-    $recent_achievements = [];
+if (isset($coach['id'])) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) as student_name,
+                   CASE a.medal_type
+                       WHEN 'gold' THEN '🥇'
+                       WHEN 'silver' THEN '🥈'
+                       WHEN 'bronze' THEN '🥉'
+                       ELSE '🏆'
+                   END as medal_icon
+            FROM achievements a
+            JOIN students s ON a.student_id = s.id
+            JOIN users u ON s.user_id = u.id
+            WHERE a.verified_by = ?
+            ORDER BY a.created_at DESC
+            LIMIT 5
+        ");
+        $stmt->execute([$coach['id']]);
+        $recent_achievements = $stmt->fetchAll();
+    } catch (Exception $e) {
+        error_log("Error fetching achievements: " . $e->getMessage());
+        $recent_achievements = [];
+    }
 }
 
 // Get upcoming matches/events
 $upcoming_matches = [];
-try {
-    $team_ids = array_column($teams, 'id');
-    if (!empty($team_ids)) {
-        $placeholders = implode(',', array_fill(0, count($team_ids), '?'));
-        $stmt = $pdo->prepare("
-            SELECT m.*, t.team_name
-            FROM matches m
-            JOIN teams t ON m.team_id = t.id
-            WHERE m.team_id IN ($placeholders) AND m.match_date >= CURDATE()
-            ORDER BY m.match_date ASC
-            LIMIT 5
-        ");
-        $stmt->execute($team_ids);
-        $upcoming_matches = $stmt->fetchAll();
+if (!empty($teams)) {
+    try {
+        $team_ids = array_column($teams, 'id');
+        if (!empty($team_ids)) {
+            $placeholders = implode(',', array_fill(0, count($team_ids), '?'));
+            $stmt = $pdo->prepare("
+                SELECT m.*, t.team_name
+                FROM matches m
+                JOIN teams t ON m.team_id = t.id
+                WHERE m.team_id IN ($placeholders) AND m.match_date >= CURDATE()
+                ORDER BY m.match_date ASC
+                LIMIT 5
+            ");
+            $stmt->execute($team_ids);
+            $upcoming_matches = $stmt->fetchAll();
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching matches: " . $e->getMessage());
+        $upcoming_matches = [];
     }
-} catch (Exception $e) {
-    $upcoming_matches = [];
 }
 
 // If no matches, create sample data
 if (empty($upcoming_matches) && !empty($teams)) {
     $upcoming_matches = [
-        ['match_date' => date('Y-m-d', strtotime('+3 days')), 'opponent' => 'University Team', 'location' => 'Main Gym', 'match_time' => '15:00:00', 'team_name' => $teams[0]['team_name'] ?? 'Varsity'],
-        ['match_date' => date('Y-m-d', strtotime('+10 days')), 'opponent' => 'City Rivals', 'location' => 'Sports Complex', 'match_time' => '14:30:00', 'team_name' => $teams[0]['team_name'] ?? 'Varsity'],
-        ['match_date' => date('Y-m-d', strtotime('+17 days')), 'opponent' => 'State Champions', 'location' => 'Arena', 'match_time' => '16:00:00', 'team_name' => $teams[0]['team_name'] ?? 'Varsity']
+        [
+            'match_date' => date('Y-m-d', strtotime('+3 days')), 
+            'opponent' => 'University Team', 
+            'location' => 'Main Gym', 
+            'match_time' => '15:00:00', 
+            'team_name' => $teams[0]['team_name'] ?? 'Varsity Team'
+        ],
+        [
+            'match_date' => date('Y-m-d', strtotime('+10 days')), 
+            'opponent' => 'City Rivals', 
+            'location' => 'Sports Complex', 
+            'match_time' => '14:30:00', 
+            'team_name' => $teams[0]['team_name'] ?? 'Varsity Team'
+        ],
+        [
+            'match_date' => date('Y-m-d', strtotime('+17 days')), 
+            'opponent' => 'State Champions', 
+            'location' => 'Arena', 
+            'match_time' => '16:00:00', 
+            'team_name' => $teams[0]['team_name'] ?? 'Varsity Team'
+        ]
     ];
 }
 
@@ -212,6 +276,21 @@ if ($hour < 12) {
 } else {
     $greeting = "Good Evening";
 }
+
+// Get sports for dropdown
+$sports = [];
+try {
+    $sports = $pdo->query("SELECT sport_name FROM sports WHERE is_active = 1 OR is_active IS NULL")->fetchAll();
+} catch (Exception $e) {
+    // If sports table doesn't exist or query fails, use default sports
+    $sports = [
+        ['sport_name' => 'Basketball'],
+        ['sport_name' => 'Volleyball'],
+        ['sport_name' => 'Football'],
+        ['sport_name' => 'Swimming'],
+        ['sport_name' => 'Athletics']
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -221,6 +300,7 @@ if ($hour < 12) {
     <title>TALENTRIX - Sports Coach Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* [Previous CSS styles remain exactly the same as in your original file] */
         * {
             margin: 0;
             padding: 0;
@@ -697,6 +777,7 @@ if ($hour < 12) {
             flex-direction: column;
             align-items: center;
             gap: 8px;
+            cursor: pointer;
         }
 
         .action-btn:hover {
@@ -1294,8 +1375,8 @@ if ($hour < 12) {
                     <?php foreach(array_slice($teams, 0, 3) as $team): ?>
                     <a href="#" class="nav-item">
                         <i class="fas fa-users"></i>
-                        <span><?php echo htmlspecialchars($team['team_name']); ?></span>
-                        <span class="badge" style="background: #f59e0b;"><?php echo $team['player_count']; ?></span>
+                        <span><?php echo htmlspecialchars($team['team_name'] ?? 'Team'); ?></span>
+                        <span class="badge" style="background: #f59e0b;"><?php echo $team['player_count'] ?? 0; ?></span>
                     </a>
                     <?php endforeach; ?>
                 </div>
@@ -1332,7 +1413,7 @@ if ($hour < 12) {
                 <div class="header-actions">
                     <div class="search-box">
                         <i class="fas fa-search"></i>
-                        <input type="text" placeholder="Search player by name...">
+                        <input type="text" placeholder="Search player by name..." id="searchInput">
                     </div>
                     <div class="notification-icon">
                         <i class="far fa-bell"></i>
@@ -1481,16 +1562,16 @@ if ($hour < 12) {
                         <h3><i class="fas fa-users"></i> Team Roster</h3>
                         <div style="display: flex; gap: 15px; align-items: center;">
                             <span style="font-size: 12px; color: #64748b;">Sort By:</span>
-                            <select style="padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px;">
-                                <option>Position</option>
-                                <option>Jersey #</option>
-                                <option>Name</option>
+                            <select style="padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px;" id="sortSelect">
+                                <option value="position">Position</option>
+                                <option value="jersey">Jersey #</option>
+                                <option value="name">Name</option>
                             </select>
                             <a href="#" class="view-all">View All →</a>
                         </div>
                     </div>
                     
-                    <table class="roster-table">
+                    <table class="roster-table" id="rosterTable">
                         <thead>
                             <tr>
                                 <th>Player Name</th>
@@ -1506,10 +1587,10 @@ if ($hour < 12) {
                                     <td>
                                         <div class="player-info">
                                             <div class="player-avatar">
-                                                <?php echo strtoupper(substr($player['first_name'], 0, 1) . substr($player['last_name'] ?? '', 0, 1)); ?>
+                                                <?php echo strtoupper(substr($player['first_name'] ?? 'P', 0, 1) . substr($player['last_name'] ?? 'L', 0, 1)); ?>
                                             </div>
                                             <div>
-                                                <div class="player-name"><?php echo htmlspecialchars($player['first_name'] . ' ' . ($player['last_name'] ?? '')); ?></div>
+                                                <div class="player-name"><?php echo htmlspecialchars(($player['first_name'] ?? 'Player') . ' ' . ($player['last_name'] ?? '')); ?></div>
                                                 <div class="player-position"><?php echo htmlspecialchars($player['position'] ?? $player['primary_sport'] ?? 'Player'); ?></div>
                                             </div>
                                         </div>
@@ -1536,8 +1617,8 @@ if ($hour < 12) {
                     </table>
 
                     <div style="display: flex; gap: 15px; margin-top: 20px;">
-                        <span class="status-badge status-active">● 12 Active</span>
-                        <span class="status-badge status-injured">● 2 Injured</span>
+                        <span class="status-badge status-active">● <?php echo $active_count; ?> Active</span>
+                        <span class="status-badge status-injured">● <?php echo $injured_count; ?> Injured</span>
                     </div>
                 </div>
 
@@ -1546,7 +1627,7 @@ if ($hour < 12) {
                     <div class="card-header">
                         <h3><i class="fas fa-clock"></i> Pending Approvals</h3>
                         <?php if($pending_count > 0): ?>
-                        <span class="badge" style="background: #f59e0b;"><?php echo $pending_count; ?> new</span>
+                        <span class="badge" style="background: #f59e0b; padding: 5px 10px; border-radius: 20px; color: white;"><?php echo $pending_count; ?> new</span>
                         <?php endif; ?>
                     </div>
                     
@@ -1555,15 +1636,15 @@ if ($hour < 12) {
                             <?php foreach(array_slice($pending_approvals, 0, 5) as $approval): ?>
                             <div class="approval-item">
                                 <div class="approval-avatar">
-                                    <?php echo strtoupper(substr($approval['first_name'], 0, 1) . substr($approval['last_name'], 0, 1)); ?>
+                                    <?php echo strtoupper(substr($approval['first_name'] ?? 'S', 0, 1) . substr($approval['last_name'] ?? 'T', 0, 1)); ?>
                                 </div>
                                 <div class="approval-info">
-                                    <h4><?php echo htmlspecialchars($approval['first_name'] . ' ' . $approval['last_name']); ?></h4>
-                                    <p><?php echo htmlspecialchars($approval['sport']); ?> • <?php echo htmlspecialchars($approval['position']); ?></p>
+                                    <h4><?php echo htmlspecialchars(($approval['first_name'] ?? 'Student') . ' ' . ($approval['last_name'] ?? '')); ?></h4>
+                                    <p><?php echo htmlspecialchars($approval['sport'] ?? 'Basketball'); ?> • <?php echo htmlspecialchars($approval['position'] ?? 'Player'); ?></p>
                                 </div>
                                 <div class="approval-actions">
-                                    <button class="btn-approve" onclick="approveRequest(<?php echo $approval['approval_id']; ?>)">✓</button>
-                                    <button class="btn-reject" onclick="showRejectModal(<?php echo $approval['approval_id']; ?>)">✗</button>
+                                    <button class="btn-approve" onclick="approveRequest(<?php echo $approval['approval_id'] ?? 0; ?>)">✓</button>
+                                    <button class="btn-reject" onclick="showRejectModal(<?php echo $approval['approval_id'] ?? 0; ?>)">✗</button>
                                 </div>
                             </div>
                             <?php endforeach; ?>
@@ -1587,25 +1668,25 @@ if ($hour < 12) {
                     </div>
                     
                     <div class="schedule-list">
-                        <?php foreach($upcoming_matches as $match): ?>
-                        <div class="schedule-item">
-                            <div class="schedule-date">
-                                <div class="day"><?php echo date('d', strtotime($match['match_date'])); ?></div>
-                                <div class="month"><?php echo date('M', strtotime($match['match_date'])); ?></div>
+                        <?php if(!empty($upcoming_matches)): ?>
+                            <?php foreach($upcoming_matches as $match): ?>
+                            <div class="schedule-item">
+                                <div class="schedule-date">
+                                    <div class="day"><?php echo date('d', strtotime($match['match_date'] ?? date('Y-m-d'))); ?></div>
+                                    <div class="month"><?php echo date('M', strtotime($match['match_date'] ?? date('Y-m-d'))); ?></div>
+                                </div>
+                                <div class="schedule-details">
+                                    <h4>vs <?php echo htmlspecialchars($match['opponent'] ?? 'TBD'); ?></h4>
+                                    <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($match['location'] ?? 'TBA'); ?> • <i class="fas fa-clock"></i> <?php echo isset($match['match_time']) ? date('h:i A', strtotime($match['match_time'])) : 'TBA'; ?></p>
+                                </div>
+                                <span class="schedule-team"><?php echo htmlspecialchars($match['team_name'] ?? 'Varsity'); ?></span>
                             </div>
-                            <div class="schedule-details">
-                                <h4>vs <?php echo htmlspecialchars($match['opponent']); ?></h4>
-                                <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($match['location'] ?? 'TBA'); ?> • <i class="fas fa-clock"></i> <?php echo isset($match['match_time']) ? date('h:i A', strtotime($match['match_time'])) : 'TBA'; ?></p>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="empty-state">
+                                <i class="fas fa-calendar-times"></i>
+                                <p>No upcoming matches scheduled</p>
                             </div>
-                            <span class="schedule-team"><?php echo htmlspecialchars($match['team_name'] ?? 'Varsity'); ?></span>
-                        </div>
-                        <?php endforeach; ?>
-                        
-                        <?php if(empty($upcoming_matches)): ?>
-                        <div class="empty-state">
-                            <i class="fas fa-calendar-times"></i>
-                            <p>No upcoming matches scheduled</p>
-                        </div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -1625,13 +1706,15 @@ if ($hour < 12) {
                                     <?php echo $achievement['medal_icon'] ?? '🏆'; ?>
                                 </div>
                                 <div class="achievement-details">
-                                    <h4><?php echo htmlspecialchars($achievement['achievement_title']); ?></h4>
-                                    <p><?php echo htmlspecialchars($achievement['student_name']); ?></p>
+                                    <h4><?php echo htmlspecialchars($achievement['achievement_title'] ?? 'Achievement'); ?></h4>
+                                    <p><?php echo htmlspecialchars($achievement['student_name'] ?? 'Student'); ?></p>
                                 </div>
                                 <div class="achievement-medal">
-                                    <?php if($achievement['medal_type'] == 'gold'): ?>🥇
-                                    <?php elseif($achievement['medal_type'] == 'silver'): ?>🥈
-                                    <?php elseif($achievement['medal_type'] == 'bronze'): ?>🥉
+                                    <?php if(isset($achievement['medal_type'])): ?>
+                                        <?php if($achievement['medal_type'] == 'gold'): ?>🥇
+                                        <?php elseif($achievement['medal_type'] == 'silver'): ?>🥈
+                                        <?php elseif($achievement['medal_type'] == 'bronze'): ?>🥉
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -1667,7 +1750,7 @@ if ($hour < 12) {
     <div id="addPlayerModal" class="modal">
         <div class="modal-content">
             <h2><i class="fas fa-user-plus"></i> Add New Player</h2>
-            <form method="POST" action="add_student.php">
+            <form method="POST" action="add_student.php" onsubmit="return validateAddPlayerForm()">
                 <div class="form-group">
                     <label>Student ID Number</label>
                     <input type="text" name="id_number" placeholder="e.g., 2024-0001" required>
@@ -1688,8 +1771,8 @@ if ($hour < 12) {
                     <label>Sport</label>
                     <select name="primary_sport" required>
                         <option value="">-- Select Sport --</option>
-                        <?php foreach($sports = $pdo->query("SELECT sport_name FROM sports WHERE is_active = 1")->fetchAll() as $sport): ?>
-                        <option value="<?php echo $sport['sport_name']; ?>"><?php echo $sport['sport_name']; ?></option>
+                        <?php foreach($sports as $sport): ?>
+                        <option value="<?php echo htmlspecialchars($sport['sport_name']); ?>"><?php echo htmlspecialchars($sport['sport_name']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -1700,6 +1783,15 @@ if ($hour < 12) {
                 <div class="form-group">
                     <label>Jersey Number</label>
                     <input type="number" name="jersey_number" min="0" max="99">
+                </div>
+                <div class="form-group">
+                    <label>Select Team</label>
+                    <select name="team_id" required>
+                        <option value="">-- Select Team --</option>
+                        <?php foreach($teams as $team): ?>
+                        <option value="<?php echo $team['id']; ?>"><?php echo htmlspecialchars($team['team_name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn-submit">Add Player</button>
@@ -1719,7 +1811,7 @@ if ($hour < 12) {
                     <select name="team_id" required>
                         <option value="">-- Select Team --</option>
                         <?php foreach($teams as $team): ?>
-                        <option value="<?php echo $team['id']; ?>"><?php echo htmlspecialchars($team['team_name']); ?></option>
+                        <option value="<?php echo $team['id']; ?>"><?php echo htmlspecialchars($team['team_name'] ?? 'Team'); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -1757,7 +1849,7 @@ if ($hour < 12) {
                     <select name="student_id" required>
                         <option value="">-- Select Student --</option>
                         <?php foreach($team_players as $player): ?>
-                        <option value="<?php echo $player['id']; ?>"><?php echo htmlspecialchars($player['first_name'] . ' ' . $player['last_name']); ?></option>
+                        <option value="<?php echo $player['id'] ?? 0; ?>"><?php echo htmlspecialchars(($player['first_name'] ?? '') . ' ' . ($player['last_name'] ?? '')); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -1799,19 +1891,34 @@ if ($hour < 12) {
                     <label>Date</label>
                     <input type="date" name="attendance_date" value="<?php echo date('Y-m-d'); ?>" required>
                 </div>
-                
-                <h3 style="margin: 20px 0 10px;">Players</h3>
-                <?php foreach($team_players as $player): ?>
-                <div style="display: flex; align-items: center; gap: 15px; padding: 10px; background: #f8fafc; margin-bottom: 10px; border-radius: 8px;">
-                    <span style="font-weight: 600;"><?php echo htmlspecialchars($player['first_name'] . ' ' . ($player['last_name'] ?? '')); ?></span>
-                    <select name="attendance[<?php echo $player['id']; ?>]" style="margin-left: auto; padding: 5px; border: 1px solid #e2e8f0; border-radius: 5px;">
-                        <option value="present">✅ Present</option>
-                        <option value="absent">❌ Absent</option>
-                        <option value="late">⏰ Late</option>
-                        <option value="excused">📝 Excused</option>
+                <div class="form-group">
+                    <label>Select Team</label>
+                    <select name="team_id" id="attendanceTeamSelect" required onchange="loadTeamPlayers(this.value)">
+                        <option value="">-- Select Team --</option>
+                        <?php foreach($teams as $team): ?>
+                        <option value="<?php echo $team['id']; ?>"><?php echo htmlspecialchars($team['team_name']); ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
-                <?php endforeach; ?>
+                
+                <h3 style="margin: 20px 0 10px;">Players</h3>
+                <div id="playersAttendanceList">
+                    <?php if(!empty($team_players)): ?>
+                        <?php foreach($team_players as $player): ?>
+                        <div style="display: flex; align-items: center; gap: 15px; padding: 10px; background: #f8fafc; margin-bottom: 10px; border-radius: 8px;">
+                            <span style="font-weight: 600;"><?php echo htmlspecialchars(($player['first_name'] ?? '') . ' ' . ($player['last_name'] ?? '')); ?></span>
+                            <select name="attendance[<?php echo $player['id'] ?? 0; ?>]" style="margin-left: auto; padding: 5px; border: 1px solid #e2e8f0; border-radius: 5px;">
+                                <option value="present">✅ Present</option>
+                                <option value="absent">❌ Absent</option>
+                                <option value="late">⏰ Late</option>
+                                <option value="excused">📝 Excused</option>
+                            </select>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <p class="empty-state">No players available</p>
+                    <?php endif; ?>
+                </div>
                 
                 <div class="modal-actions">
                     <button type="submit" class="btn-submit">Save Attendance</button>
@@ -1859,14 +1966,20 @@ if ($hour < 12) {
 
     // Approval functions
     function approveRequest(approvalId) {
-        if(confirm('Approve this request?')) {
+        if(approvalId && confirm('Approve this request?')) {
             window.location.href = 'process_approval.php?id=' + approvalId + '&action=approve';
+        } else {
+            alert('Invalid approval ID');
         }
     }
 
     function showRejectModal(approvalId) {
-        currentApprovalId = approvalId;
-        document.getElementById('rejectModal').classList.add('active');
+        if(approvalId) {
+            currentApprovalId = approvalId;
+            document.getElementById('rejectModal').classList.add('active');
+        } else {
+            alert('Invalid approval ID');
+        }
     }
 
     function closeRejectModal() {
@@ -1881,8 +1994,109 @@ if ($hour < 12) {
             alert('Please provide a reason for rejection');
             return;
         }
-        window.location.href = 'process_approval.php?id=' + currentApprovalId + '&action=reject&reason=' + encodeURIComponent(reason);
+        if(currentApprovalId) {
+            window.location.href = 'process_approval.php?id=' + currentApprovalId + '&action=reject&reason=' + encodeURIComponent(reason);
+        }
     }
+
+    // Form validation
+    function validateAddPlayerForm() {
+        const idNumber = document.querySelector('input[name="id_number"]').value;
+        const email = document.querySelector('input[name="email"]').value;
+        const teamId = document.querySelector('select[name="team_id"]').value;
+        
+        if(!idNumber || !email || !teamId) {
+            alert('Please fill in all required fields');
+            return false;
+        }
+        
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if(!emailRegex.test(email)) {
+            alert('Please enter a valid email address');
+            return false;
+        }
+        
+        return true;
+    }
+
+    // Load team players for attendance
+    function loadTeamPlayers(teamId) {
+        if(!teamId) return;
+        
+        // In a real implementation, you would make an AJAX call here
+        // For now, we'll just show a message
+        const list = document.getElementById('playersAttendanceList');
+        list.innerHTML = '<p class="empty-state">Loading players...</p>';
+        
+        // Simulate loading
+        setTimeout(() => {
+            // This would be replaced with actual AJAX response
+            list.innerHTML = `<?php 
+                if(!empty($team_players)) {
+                    $output = '';
+                    foreach($team_players as $player) {
+                        $output .= '<div style="display: flex; align-items: center; gap: 15px; padding: 10px; background: #f8fafc; margin-bottom: 10px; border-radius: 8px;">';
+                        $output .= '<span style="font-weight: 600;">' . htmlspecialchars($player['first_name'] . ' ' . $player['last_name']) . '</span>';
+                        $output .= '<select name=\"attendance[' . $player['id'] . ']\" style=\"margin-left: auto; padding: 5px; border: 1px solid #e2e8f0; border-radius: 5px;\">';
+                        $output .= '<option value=\"present\">✅ Present</option>';
+                        $output .= '<option value=\"absent\">❌ Absent</option>';
+                        $output .= '<option value=\"late\">⏰ Late</option>';
+                        $output .= '<option value=\"excused\">📝 Excused</option>';
+                        $output .= '</select>';
+                        $output .= '</div>';
+                    }
+                    echo $output;
+                } else {
+                    echo '<p class=\"empty-state\">No players available</p>';
+                }
+            ?>`;
+        }, 500);
+    }
+
+    // Search functionality
+    document.getElementById('searchInput')?.addEventListener('keyup', function() {
+        const searchTerm = this.value.toLowerCase();
+        const rows = document.querySelectorAll('#rosterTable tbody tr');
+        
+        rows.forEach(row => {
+            const nameCell = row.querySelector('.player-name');
+            if(nameCell) {
+                const name = nameCell.textContent.toLowerCase();
+                if(name.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+        });
+    });
+
+    // Sort functionality
+    document.getElementById('sortSelect')?.addEventListener('change', function() {
+        const sortBy = this.value;
+        const tbody = document.querySelector('#rosterTable tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        rows.sort((a, b) => {
+            if(sortBy === 'name') {
+                const nameA = a.querySelector('.player-name')?.textContent || '';
+                const nameB = b.querySelector('.player-name')?.textContent || '';
+                return nameA.localeCompare(nameB);
+            } else if(sortBy === 'position') {
+                const posA = a.querySelector('td:nth-child(2)')?.textContent || '';
+                const posB = b.querySelector('td:nth-child(2)')?.textContent || '';
+                return posA.localeCompare(posB);
+            } else if(sortBy === 'jersey') {
+                const jerseyA = a.querySelector('.jersey-badge')?.textContent.replace('#', '') || '0';
+                const jerseyB = b.querySelector('.jersey-badge')?.textContent.replace('#', '') || '0';
+                return parseInt(jerseyA) - parseInt(jerseyB);
+            }
+            return 0;
+        });
+        
+        tbody.innerHTML = '';
+        rows.forEach(row => tbody.appendChild(row));
+    });
 
     // Close modals when clicking outside
     window.onclick = function(event) {
@@ -1893,6 +2107,16 @@ if ($hour < 12) {
             }
         });
     }
+
+    // Keyboard shortcut to close modals (Escape key)
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            const modals = document.querySelectorAll('.modal.active');
+            modals.forEach(modal => {
+                modal.classList.remove('active');
+            });
+        }
+    });
     </script>
 </body>
 </html>

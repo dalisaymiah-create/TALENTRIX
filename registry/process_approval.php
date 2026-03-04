@@ -31,7 +31,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT a.*, s.user_id as student_user_id, s.id as student_id,
                u.first_name, u.last_name, u.email,
-               a.team_id, a.troupe_id
+               a.team_id, a.troupe_id, a.approval_type
         FROM approvals a
         JOIN students s ON a.student_id = s.id
         JOIN users u ON s.user_id = u.id
@@ -80,12 +80,18 @@ try {
                     $stmt->execute([$approval['student_id'], $approval['team_id']]);
                 }
             } else {
-                // Create a default team for the student
-                $stmt = $pdo->prepare("
-                    INSERT INTO team_members (student_id, status, joined_date) 
-                    VALUES (?, 'active', CURDATE())
-                ");
-                $stmt->execute([$approval['student_id']]);
+                // Get the coach's primary team
+                $coach_team = $pdo->prepare("SELECT id FROM teams WHERE coach_id = (SELECT id FROM coaches WHERE user_id = ?) LIMIT 1");
+                $coach_team->execute([$_SESSION['user_id']]);
+                $team = $coach_team->fetch();
+                
+                if ($team) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO team_members (student_id, team_id, status, joined_date) 
+                        VALUES (?, ?, 'active', CURDATE())
+                    ");
+                    $stmt->execute([$approval['student_id'], $team['id']]);
+                }
             }
         } else {
             // Dance - add to dance_troupe_members
@@ -101,12 +107,18 @@ try {
                     $stmt->execute([$approval['student_id'], $approval['troupe_id']]);
                 }
             } else {
-                // Create a default troupe for the student
-                $stmt = $pdo->prepare("
-                    INSERT INTO dance_troupe_members (student_id, status, joined_date) 
-                    VALUES (?, 'active', CURDATE())
-                ");
-                $stmt->execute([$approval['student_id']]);
+                // Get the coach's primary troupe
+                $coach_troupe = $pdo->prepare("SELECT id FROM dance_troupes WHERE coach_id = (SELECT id FROM dance_coaches WHERE user_id = ?) LIMIT 1");
+                $coach_troupe->execute([$_SESSION['user_id']]);
+                $troupe = $coach_troupe->fetch();
+                
+                if ($troupe) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO dance_troupe_members (student_id, troupe_id, status, joined_date) 
+                        VALUES (?, ?, 'active', CURDATE())
+                    ");
+                    $stmt->execute([$approval['student_id'], $troupe['id']]);
+                }
             }
         }
 
@@ -132,6 +144,7 @@ try {
 } catch (Exception $e) {
     $pdo->rollBack();
     $_SESSION['error'] = 'Error processing request: ' . $e->getMessage();
+    error_log("Approval error: " . $e->getMessage());
 }
 
 // Redirect back

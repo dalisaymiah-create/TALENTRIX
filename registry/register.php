@@ -1,5 +1,5 @@
 <?php
-// register.php - FIXED VERSION WITH WORKING SUBMIT BUTTON
+// register.php - COMPLETE FIXED VERSION WITH ALL USER TYPES INCLUDING ADMINS
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -8,7 +8,10 @@ require_once 'db.php';
 
 // If user is already logged in, redirect
 if(isset($_SESSION['user_id'])) {
-    if($_SESSION['user_type'] === 'athletics_admin') {
+    if($_SESSION['user_type'] === 'admin') {
+        header('Location: admin_pages.php?page=dashboard');
+        exit();
+    } elseif($_SESSION['user_type'] === 'athletics_admin') {
         header('Location: athletics_dashboard.php');
         exit();
     } elseif($_SESSION['user_type'] === 'dance_admin') {
@@ -184,25 +187,25 @@ $dance_specializations = [
 
 // Admin departments
 $admin_departments = [
-    'College of Sports',
-    'Athletics Office',
-    'Sports Development',
-    'Physical Education',
-    'Dance Department',
-    'Cultural Affairs',
+    'Information Technology',
+    'Administration Office',
+    'Human Resources',
+    'Finance Department',
+    'Academic Affairs',
     'Student Affairs',
-    'Administration Office'
+    'Registrar Office',
+    'System Administration'
 ];
 
 // Admin positions
 $admin_positions = [
-    'Director',
-    'Assistant Director',
-    'Coordinator',
-    'Manager',
-    'Supervisor',
-    'Officer',
-    'Specialist'
+    'System Administrator',
+    'IT Director',
+    'Database Administrator',
+    'Network Administrator',
+    'Web Administrator',
+    'Security Administrator',
+    'Support Specialist'
 ];
 
 if($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -241,7 +244,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         if(empty($_POST['student_type'])) {
             $errors[] = 'Please select student type (Athlete or Dancer)!';
         } else {
-            // Only validate fields for the selected student type
             if($_POST['student_type'] == 'athlete') {
                 if(empty($_POST['primary_sport'])) {
                     $errors[] = 'Please select your primary sport!';
@@ -266,6 +268,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             $errors[] = 'Coach ID must be: ABC-YYYY### (e.g., COA-2024001)';
         }
         $id_number = strtoupper($id_number);
+        
+        if(empty($_POST['primary_sport_coach'])) {
+            $errors[] = 'Please select the sport you want to coach!';
+        }
     }
     
     // Dance Coach validation
@@ -274,6 +280,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             $errors[] = 'Dance Trainor ID must be: ABC-YYYY### (e.g., DAN-2024001)';
         }
         $id_number = strtoupper($id_number);
+        
+        if(empty($_POST['dance_specialization'])) {
+            $errors[] = 'Please select your dance specialization!';
+        }
     }
     
     // Athletics Admin validation
@@ -292,6 +302,14 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         $id_number = strtoupper($id_number);
     }
     
+    // System Admin validation
+    if($user_type == 'admin') {
+        if(!preg_match('/^ADMIN-\d{3}$/i', $id_number)) {
+            $errors[] = 'Admin ID must be: ADMIN-### (e.g., ADMIN-001)';
+        }
+        $id_number = strtoupper($id_number);
+    }
+    
     // Check if email exists
     if(empty($errors)) {
         $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR username = ? OR id_number = ?");
@@ -301,6 +319,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
     
+    // Only proceed if NO errors
     if(empty($errors)) {
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
         
@@ -313,6 +332,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $status = 'pending';
                 $is_verified = 0;
             } else {
+                // All non-student users (admins, coaches) are automatically active
                 $status = 'active';
                 $is_verified = 1;
             }
@@ -417,29 +437,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
             
             if($user_type == 'dance_coach') {
-                // Ensure the dance_coaches table exists
-                try {
-                    $pdo->exec("
-                        CREATE TABLE IF NOT EXISTS dance_coaches (
-                            id INT PRIMARY KEY AUTO_INCREMENT,
-                            user_id INT UNIQUE NOT NULL,
-                            employee_id VARCHAR(50),
-                            dance_specialization VARCHAR(100),
-                            dance_troupe_name VARCHAR(100),
-                            years_experience INT,
-                            achievements TEXT,
-                            certifications VARCHAR(255),
-                            campus VARCHAR(100),
-                            bio TEXT,
-                            date_hired DATE,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                        )
-                    ");
-                } catch (Exception $e) {
-                    // Table might already exist - continue
-                }
-                
                 $stmt2 = $pdo->prepare("
                     INSERT INTO dance_coaches (
                         user_id, employee_id, dance_specialization, dance_troupe_name, 
@@ -460,15 +457,34 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                 ]);
             }
             
+            if($user_type == 'athletics_admin') {
+                // You can create an athletics_admins table if needed
+                // For now, just insert into users table is enough
+                // Add any athletics admin specific data here
+            }
+            
+            if($user_type == 'dance_admin') {
+                // You can create a dance_admins table if needed
+                // For now, just insert into users table is enough
+            }
+            
+            if($user_type == 'admin') {
+                // System admin - just users table is enough
+                // You can add admin-specific data here if needed
+            }
+            
             $pdo->commit();
             
-            $_SESSION['registration_success'] = 'Registration successful! Your application has been sent to your selected coach for approval.';
+            if($user_type == 'student') {
+                $_SESSION['registration_success'] = 'Registration successful! Your application has been sent to your selected coach for approval.';
+            } else {
+                $_SESSION['registration_success'] = 'Registration successful! You can now login to your account.';
+            }
             
             header('Location: login.php?registered=success');
             exit();
             
         } catch (Exception $e) {
-            // Rollback transaction
             try {
                 $pdo->rollBack();
             } catch (Exception $rollbackError) {
@@ -652,6 +668,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         .type-dance-coach .type-icon { color: #8B1E3F; }
         .type-athletics-admin .type-icon { color: #8B1E3F; }
         .type-dance-admin .type-icon { color: #FFB347; }
+        .type-admin .type-icon { color: #ef4444; }
         
         .type-label {
             font-weight: 600;
@@ -741,7 +758,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
         
         .student-fields, .sport-coach-fields, .dance-coach-fields, 
-        .athletics-admin-fields, .dance-admin-fields {
+        .athletics-admin-fields, .dance-admin-fields, .admin-fields {
             margin-top: 20px;
             padding: 20px;
             background: #f8fafc;
@@ -765,8 +782,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             border-left-color: #FFB347;
         }
         
+        .admin-fields {
+            border-left-color: #ef4444;
+        }
+        
         .student-fields h4, .sport-coach-fields h4, .dance-coach-fields h4,
-        .athletics-admin-fields h4, .dance-admin-fields h4 {
+        .athletics-admin-fields h4, .dance-admin-fields h4, .admin-fields h4 {
             margin-bottom: 15px;
             font-size: 16px;
             display: flex;
@@ -779,6 +800,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         .dance-coach-fields h4 { color: #8B1E3F; }
         .athletics-admin-fields h4 { color: #8B1E3F; }
         .dance-admin-fields h4 { color: #FFB347; }
+        .admin-fields h4 { color: #ef4444; }
         
         .student-type-selector {
             display: flex;
@@ -893,7 +915,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             z-index: 10;
         }
         
-        .btn-signup:hover:not(:disabled) {
+        .btn-signup:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);
         }
@@ -1043,6 +1065,14 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <p>Manage all dance activities (Instant access)</p>
                     </div>
                 </div>
+                
+                <div class="feature">
+                    <i class="fas fa-crown" style="color: #ef4444;"></i>
+                    <div class="feature-text">
+                        <h4>For System Admins</h4>
+                        <p>Full system access and configuration (Instant access)</p>
+                    </div>
+                </div>
             </div>
             
             <div class="login-prompt">
@@ -1067,7 +1097,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             
             <form method="POST" action="" id="registrationForm">
                 <!-- User Type Selection -->
-                <input type="hidden" name="user_type" id="user_type" value="<?php echo isset($_POST['user_type']) ? $_POST['user_type'] : 'student'; ?>">
+                <input type="hidden" name="user_type" id="user_type" value="<?php echo isset($_POST['user_type']) ? htmlspecialchars($_POST['user_type']) : 'student'; ?>">
                 
                 <div class="user-type-selector">
                     <div class="type-option type-student <?php echo (!isset($_POST['user_type']) || $_POST['user_type'] == 'student') ? 'selected' : ''; ?>" onclick="selectUserType('student')">
@@ -1103,6 +1133,13 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <i class="fas fa-star" style="color: #FFB347;"></i>
                         </div>
                         <div class="type-label">Dance Admin</div>
+                    </div>
+                    
+                    <div class="type-option type-admin <?php echo (isset($_POST['user_type']) && $_POST['user_type'] == 'admin') ? 'selected' : ''; ?>" onclick="selectUserType('admin')">
+                        <div class="type-icon">
+                            <i class="fas fa-crown" style="color: #ef4444;"></i>
+                        </div>
+                        <div class="type-label">System Admin</div>
                     </div>
                 </div>
                 
@@ -1171,7 +1208,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <div class="input-with-icon">
                             <i class="fas fa-id-card"></i>
                             <input type="text" id="id_number" name="id_number" 
-                                   placeholder="e.g., 2023-00123" 
+                                   placeholder="Format depends on your role" 
                                    value="<?php echo isset($_POST['id_number']) ? htmlspecialchars($_POST['id_number']) : ''; ?>" 
                                    required>
                         </div>
@@ -1203,7 +1240,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <div class="student-fields" id="student-fields" style="display: <?php echo (!isset($_POST['user_type']) || $_POST['user_type'] == 'student') ? 'block' : 'none'; ?>;">
                     <h4><i class="fas fa-graduation-cap"></i> Student Information</h4>
                     
-                    <input type="hidden" name="student_type" id="student_type" value="<?php echo isset($_POST['student_type']) ? $_POST['student_type'] : 'athlete'; ?>">
+                    <input type="hidden" name="student_type" id="student_type" value="<?php echo isset($_POST['student_type']) ? htmlspecialchars($_POST['student_type']) : 'athlete'; ?>">
                     
                     <div class="student-type-selector">
                         <div class="student-type-option student-type-athlete <?php echo (!isset($_POST['student_type']) || $_POST['student_type'] == 'athlete') ? 'selected' : ''; ?>" onclick="selectStudentType('athlete')">
@@ -1458,11 +1495,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="primary_sport_coach">Sport to Coach</label>
+                            <label for="primary_sport_coach">Sport to Coach <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-futbol"></i>
-                                <select id="primary_sport_coach" name="primary_sport_coach">
-                                    <option value="">-- Select Sport (Optional) --</option>
+                                <select id="primary_sport_coach" name="primary_sport_coach" required>
+                                    <option value="">-- Select Sport --</option>
                                     <?php foreach($sports as $sport): ?>
                                         <option value="<?php echo $sport['sport_name']; ?>" <?php echo (isset($_POST['primary_sport_coach']) && $_POST['primary_sport_coach'] == $sport['sport_name']) ? 'selected' : ''; ?>>
                                             <?php echo $sport['sport_name']; ?>
@@ -1489,11 +1526,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </div>
                         
                         <div class="form-group">
-                            <label for="years_experience">Years of Experience</label>
+                            <label for="years_experience">Years of Experience <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-calendar-alt"></i>
-                                <select id="years_experience" name="years_experience">
-                                    <option value="">-- Select Years (Optional) --</option>
+                                <select id="years_experience" name="years_experience" required>
+                                    <option value="">-- Select Years --</option>
                                     <?php foreach($years_experience as $year): ?>
                                         <option value="<?php echo $year; ?>" <?php echo (isset($_POST['years_experience']) && $_POST['years_experience'] == $year) ? 'selected' : ''; ?>>
                                             <?php echo $year; ?> year<?php echo $year != 1 ? 's' : ''; ?>
@@ -1539,11 +1576,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="dance_specialization">Dance Style Specialization</label>
+                            <label for="dance_specialization">Dance Style Specialization <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-star"></i>
-                                <select id="dance_specialization" name="dance_specialization">
-                                    <option value="">-- Select Dance Style (Optional) --</option>
+                                <select id="dance_specialization" name="dance_specialization" required>
+                                    <option value="">-- Select Dance Style --</option>
                                     <?php foreach($dance_specializations as $spec): ?>
                                         <option value="<?php echo $spec; ?>" <?php echo (isset($_POST['dance_specialization']) && $_POST['dance_specialization'] == $spec) ? 'selected' : ''; ?>>
                                             <?php echo $spec; ?>
@@ -1565,11 +1602,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </div>
                         
                         <div class="form-group">
-                            <label for="dance_experience">Years of Dance Experience</label>
+                            <label for="dance_experience">Years of Dance Experience <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-calendar-alt"></i>
-                                <select id="dance_experience" name="dance_experience">
-                                    <option value="">-- Select Years (Optional) --</option>
+                                <select id="dance_experience" name="dance_experience" required>
+                                    <option value="">-- Select Years --</option>
                                     <?php for($year = 0; $year <= 30; $year++): ?>
                                         <option value="<?php echo $year; ?>" <?php echo (isset($_POST['dance_experience']) && $_POST['dance_experience'] == $year) ? 'selected' : ''; ?>>
                                             <?php echo $year; ?> year<?php echo $year != 1 ? 's' : ''; ?>
@@ -1635,26 +1672,30 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="admin_department">Department</label>
+                            <label for="admin_department">Department <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-building"></i>
-                                <select id="admin_department" name="admin_department">
+                                <select id="admin_department" name="admin_department" required>
                                     <option value="">-- Select Department --</option>
                                     <?php foreach($admin_departments as $dept): ?>
-                                        <option value="<?php echo $dept; ?>"><?php echo $dept; ?></option>
+                                        <option value="<?php echo $dept; ?>" <?php echo (isset($_POST['admin_department']) && $_POST['admin_department'] == $dept) ? 'selected' : ''; ?>>
+                                            <?php echo $dept; ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
                         </div>
                         
                         <div class="form-group">
-                            <label for="admin_position">Position</label>
+                            <label for="admin_position">Position <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-user-tie"></i>
-                                <select id="admin_position" name="admin_position">
+                                <select id="admin_position" name="admin_position" required>
                                     <option value="">-- Select Position --</option>
                                     <?php foreach($admin_positions as $pos): ?>
-                                        <option value="<?php echo $pos; ?>"><?php echo $pos; ?></option>
+                                        <option value="<?php echo $pos; ?>" <?php echo (isset($_POST['admin_position']) && $_POST['admin_position'] == $pos) ? 'selected' : ''; ?>>
+                                            <?php echo $pos; ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -1665,9 +1706,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <div class="input-with-icon">
                                 <i class="fas fa-map-marker-alt"></i>
                                 <select id="admin_campus" name="admin_campus">
-                                    <option value="">-- Select Campus --</option>
+                                    <option value="">-- Select Campus (Optional) --</option>
                                     <?php foreach($campuses as $camp): ?>
-                                        <option value="<?php echo $camp; ?>"><?php echo $camp; ?></option>
+                                        <option value="<?php echo $camp; ?>" <?php echo (isset($_POST['admin_campus']) && $_POST['admin_campus'] == $camp) ? 'selected' : ''; ?>>
+                                            <?php echo $camp; ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -1695,10 +1738,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="dance_admin_department">Department</label>
+                            <label for="dance_admin_department">Department <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-building"></i>
-                                <select id="dance_admin_department" name="dance_admin_department">
+                                <select id="dance_admin_department" name="dance_admin_department" required>
                                     <option value="">-- Select Department --</option>
                                     <option value="Dance Department">Dance Department</option>
                                     <option value="Cultural Affairs">Cultural Affairs</option>
@@ -1709,13 +1752,15 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </div>
                         
                         <div class="form-group">
-                            <label for="dance_admin_position">Position</label>
+                            <label for="dance_admin_position">Position <span>*</span></label>
                             <div class="input-with-icon">
                                 <i class="fas fa-user-tie"></i>
-                                <select id="dance_admin_position" name="dance_admin_position">
+                                <select id="dance_admin_position" name="dance_admin_position" required>
                                     <option value="">-- Select Position --</option>
                                     <?php foreach($admin_positions as $pos): ?>
-                                        <option value="<?php echo $pos; ?>"><?php echo $pos; ?></option>
+                                        <option value="<?php echo $pos; ?>" <?php echo (isset($_POST['dance_admin_position']) && $_POST['dance_admin_position'] == $pos) ? 'selected' : ''; ?>>
+                                            <?php echo $pos; ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -1726,9 +1771,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <div class="input-with-icon">
                                 <i class="fas fa-map-marker-alt"></i>
                                 <select id="dance_admin_campus" name="dance_admin_campus">
-                                    <option value="">-- Select Campus --</option>
+                                    <option value="">-- Select Campus (Optional) --</option>
                                     <?php foreach($campuses as $camp): ?>
-                                        <option value="<?php echo $camp; ?>"><?php echo $camp; ?></option>
+                                        <option value="<?php echo $camp; ?>" <?php echo (isset($_POST['dance_admin_campus']) && $_POST['dance_admin_campus'] == $camp) ? 'selected' : ''; ?>>
+                                            <?php echo $camp; ?>
+                                        </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -1750,6 +1797,72 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
                     </div>
                 </div>
                 
+                <!-- SYSTEM ADMIN-SPECIFIC FIELDS -->
+                <div class="admin-fields" id="admin-fields" style="display: <?php echo (isset($_POST['user_type']) && $_POST['user_type'] == 'admin') ? 'block' : 'none'; ?>;">
+                    <h4><i class="fas fa-crown" style="color: #ef4444;"></i> System Administrator Information</h4>
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="admin_department_sys">Department <span>*</span></label>
+                            <div class="input-with-icon">
+                                <i class="fas fa-building"></i>
+                                <select id="admin_department_sys" name="admin_department_sys" required>
+                                    <option value="">-- Select Department --</option>
+                                    <?php foreach($admin_departments as $dept): ?>
+                                        <option value="<?php echo $dept; ?>" <?php echo (isset($_POST['admin_department_sys']) && $_POST['admin_department_sys'] == $dept) ? 'selected' : ''; ?>>
+                                            <?php echo $dept; ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="admin_position_sys">Position <span>*</span></label>
+                            <div class="input-with-icon">
+                                <i class="fas fa-user-tie"></i>
+                                <select id="admin_position_sys" name="admin_position_sys" required>
+                                    <option value="">-- Select Position --</option>
+                                    <?php foreach($admin_positions as $pos): ?>
+                                        <option value="<?php echo $pos; ?>" <?php echo (isset($_POST['admin_position_sys']) && $_POST['admin_position_sys'] == $pos) ? 'selected' : ''; ?>>
+                                            <?php echo $pos; ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="admin_campus_sys">Campus</label>
+                            <div class="input-with-icon">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <select id="admin_campus_sys" name="admin_campus_sys">
+                                    <option value="">-- Select Campus (Optional) --</option>
+                                    <?php foreach($campuses as $camp): ?>
+                                        <option value="<?php echo $camp; ?>" <?php echo (isset($_POST['admin_campus_sys']) && $_POST['admin_campus_sys'] == $camp) ? 'selected' : ''; ?>>
+                                            <?php echo $camp; ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group full-width">
+                            <label for="admin_bio_sys">Bio / Introduction</label>
+                            <div class="input-with-icon">
+                                <i class="fas fa-align-left"></i>
+                                <textarea id="admin_bio_sys" name="admin_bio_sys" rows="3" 
+                                          placeholder="Tell us about your administrative experience"><?php echo isset($_POST['admin_bio_sys']) ? htmlspecialchars($_POST['admin_bio_sys']) : ''; ?></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-box" style="background: #c6f6d5; border-left-color: #38a169; color: #22543d;">
+                        <i class="fas fa-check-circle"></i>
+                        <strong>Note:</strong> Your account will be activated immediately. You will have full system access to manage all aspects of TALENTRIX.
+                    </div>
+                </div>
+                
                 <button type="submit" class="btn-signup" id="submit-btn">
                     <i class="fas fa-user-plus"></i>
                     <span class="btn-text">Create Account</span>
@@ -1767,24 +1880,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     const sportPositions = <?php echo json_encode($sportPositions); ?>;
     
     // College courses data
-    const courseData = {
-        'CBM': [
-            'Bachelor of Science in Hospitality Management',
-            'Bachelor of Science in Office Administration'
-        ],
-        'CTE': [
-            'Bachelor of Elementary Education',
-            'Bachelor of Secondary Education'
-        ],
-        'COS': [
-            'Bachelor of Science in Computer Science',
-            'Bachelor of Science in Environmental Science'
-        ],
-        'CFMS': [
-            'Bachelor of Science in Fisheries',
-            'Bachelor of Science in Marine Biology'
-        ]
-    };
+    const courseData = <?php echo json_encode($colleges); ?>;
 
     // User Type Selection
     function selectUserType(type) {
@@ -1802,6 +1898,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             document.querySelector('.type-athletics-admin').classList.add('selected');
         } else if (type === 'dance_admin') {
             document.querySelector('.type-dance-admin').classList.add('selected');
+        } else if (type === 'admin') {
+            document.querySelector('.type-admin').classList.add('selected');
         } else {
             document.querySelector('.type-' + type).classList.add('selected');
         }
@@ -1812,6 +1910,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         document.getElementById('dance-coach-fields').style.display = type === 'dance_coach' ? 'block' : 'none';
         document.getElementById('athletics-admin-fields').style.display = type === 'athletics_admin' ? 'block' : 'none';
         document.getElementById('dance-admin-fields').style.display = type === 'dance_admin' ? 'block' : 'none';
+        document.getElementById('admin-fields').style.display = type === 'admin' ? 'block' : 'none';
         
         // Update ID format hint
         const idHint = document.getElementById('id-number-hint');
@@ -1825,10 +1924,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             idHint.textContent = 'Format: ATH-### (Example: ATH-001)';
         } else if (type === 'dance_admin') {
             idHint.textContent = 'Format: DAN-### (Example: DAN-001)';
+        } else if (type === 'admin') {
+            idHint.textContent = 'Format: ADMIN-### (Example: ADMIN-001)';
         }
         
-        // Update required attributes based on visibility
-        updateRequiredFields();
+        // Update required fields after a short delay
+        setTimeout(updateRequiredFields, 50);
     }
 
     // Student Type Selection
@@ -1844,36 +1945,79 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         document.getElementById('athlete-fields').style.display = type === 'athlete' ? 'block' : 'none';
         document.getElementById('dancer-fields').style.display = type === 'dancer' ? 'block' : 'none';
         
-        // Update required attributes based on visibility
-        updateRequiredFields();
+        // Update required fields after a short delay
+        setTimeout(updateRequiredFields, 50);
     }
 
-    // Function to update required attributes based on visibility
+    // Update required attributes based on visibility
     function updateRequiredFields() {
-        // For athlete fields
-        const athleteFields = document.getElementById('athlete-fields');
+        console.log('Updating required fields...');
+        
+        // First, REMOVE required from ALL conditional fields
         const primarySport = document.getElementById('primary_sport');
         const approvingCoach = document.getElementById('approving_coach');
-        
-        if (athleteFields && athleteFields.style.display === 'block') {
-            if (primarySport) primarySport.setAttribute('required', 'required');
-            if (approvingCoach) approvingCoach.setAttribute('required', 'required');
-        } else {
-            if (primarySport) primarySport.removeAttribute('required');
-            if (approvingCoach) approvingCoach.removeAttribute('required');
-        }
-        
-        // For dancer fields
-        const dancerFields = document.getElementById('dancer-fields');
         const danceTroupe = document.getElementById('dance_troupe');
         const approvingDanceCoach = document.getElementById('approving_dance_coach');
+        const sportCoachSport = document.getElementById('primary_sport_coach');
+        const sportCoachYears = document.getElementById('years_experience');
+        const danceSpecialization = document.getElementById('dance_specialization');
+        const danceExperience = document.getElementById('dance_experience');
+        const adminDepartment = document.getElementById('admin_department');
+        const adminPosition = document.getElementById('admin_position');
+        const danceAdminDepartment = document.getElementById('dance_admin_department');
+        const danceAdminPosition = document.getElementById('dance_admin_position');
+        const sysAdminDepartment = document.getElementById('admin_department_sys');
+        const sysAdminPosition = document.getElementById('admin_position_sys');
         
-        if (dancerFields && dancerFields.style.display === 'block') {
-            if (danceTroupe) danceTroupe.setAttribute('required', 'required');
-            if (approvingDanceCoach) approvingDanceCoach.setAttribute('required', 'required');
-        } else {
-            if (danceTroupe) danceTroupe.removeAttribute('required');
-            if (approvingDanceCoach) approvingDanceCoach.removeAttribute('required');
+        if (primarySport) primarySport.removeAttribute('required');
+        if (approvingCoach) approvingCoach.removeAttribute('required');
+        if (danceTroupe) danceTroupe.removeAttribute('required');
+        if (approvingDanceCoach) approvingDanceCoach.removeAttribute('required');
+        if (sportCoachSport) sportCoachSport.removeAttribute('required');
+        if (sportCoachYears) sportCoachYears.removeAttribute('required');
+        if (danceSpecialization) danceSpecialization.removeAttribute('required');
+        if (danceExperience) danceExperience.removeAttribute('required');
+        if (adminDepartment) adminDepartment.removeAttribute('required');
+        if (adminPosition) adminPosition.removeAttribute('required');
+        if (danceAdminDepartment) danceAdminDepartment.removeAttribute('required');
+        if (danceAdminPosition) danceAdminPosition.removeAttribute('required');
+        if (sysAdminDepartment) sysAdminDepartment.removeAttribute('required');
+        if (sysAdminPosition) sysAdminPosition.removeAttribute('required');
+        
+        // Get current state
+        const userType = document.getElementById('user_type').value;
+        const studentType = document.getElementById('student_type').value;
+        
+        // Apply required based on visible fields
+        if (userType === 'student') {
+            if (studentType === 'athlete') {
+                const athleteFields = document.getElementById('athlete-fields');
+                if (athleteFields && athleteFields.style.display === 'block') {
+                    if (primarySport) primarySport.setAttribute('required', 'required');
+                    if (approvingCoach) approvingCoach.setAttribute('required', 'required');
+                }
+            } else if (studentType === 'dancer') {
+                const dancerFields = document.getElementById('dancer-fields');
+                if (dancerFields && dancerFields.style.display === 'block') {
+                    if (danceTroupe) danceTroupe.setAttribute('required', 'required');
+                    if (approvingDanceCoach) approvingDanceCoach.setAttribute('required', 'required');
+                }
+            }
+        } else if (userType === 'sport_coach') {
+            if (sportCoachSport) sportCoachSport.setAttribute('required', 'required');
+            if (sportCoachYears) sportCoachYears.setAttribute('required', 'required');
+        } else if (userType === 'dance_coach') {
+            if (danceSpecialization) danceSpecialization.setAttribute('required', 'required');
+            if (danceExperience) danceExperience.setAttribute('required', 'required');
+        } else if (userType === 'athletics_admin') {
+            if (adminDepartment) adminDepartment.setAttribute('required', 'required');
+            if (adminPosition) adminPosition.setAttribute('required', 'required');
+        } else if (userType === 'dance_admin') {
+            if (danceAdminDepartment) danceAdminDepartment.setAttribute('required', 'required');
+            if (danceAdminPosition) danceAdminPosition.setAttribute('required', 'required');
+        } else if (userType === 'admin') {
+            if (sysAdminDepartment) sysAdminDepartment.setAttribute('required', 'required');
+            if (sysAdminPosition) sysAdminPosition.setAttribute('required', 'required');
         }
     }
 
@@ -1885,8 +2029,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         courseSelect.innerHTML = '<option value="">-- Select Course --</option>';
         
-        if (selectedCollege && courseData[selectedCollege]) {
-            courseData[selectedCollege].forEach(course => {
+        if (selectedCollege && courseData[selectedCollege] && courseData[selectedCollege].courses) {
+            courseData[selectedCollege].courses.forEach(course => {
                 const option = document.createElement('option');
                 option.value = course;
                 option.textContent = course;
@@ -1934,23 +2078,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
     document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM loaded - setting up form');
         
-        // Initialize fields
-        updatePositionField();
-        
-        // Initialize student type display
-        const studentType = document.getElementById('student_type');
-        if (studentType) {
-            if (studentType.value === 'athlete') {
-                document.getElementById('athlete-fields').style.display = 'block';
-                document.getElementById('dancer-fields').style.display = 'none';
-            } else if (studentType.value === 'dancer') {
-                document.getElementById('athlete-fields').style.display = 'none';
-                document.getElementById('dancer-fields').style.display = 'block';
-            }
+        // Initialize position field if sport is selected
+        if (document.getElementById('primary_sport') && document.getElementById('primary_sport').value) {
+            updatePositionField();
         }
-        
-        // Initialize required fields
-        updateRequiredFields();
         
         // Initialize courses if college is selected
         const college = document.getElementById('college');
@@ -1965,44 +2096,30 @@ if($_SERVER['REQUEST_METHOD'] == 'POST') {
             idHint.textContent = 'Format: ATH-### (Example: ATH-001)';
         } else if (userType === 'dance_admin') {
             idHint.textContent = 'Format: DAN-### (Example: DAN-001)';
+        } else if (userType === 'admin') {
+            idHint.textContent = 'Format: ADMIN-### (Example: ADMIN-001)';
+        } else if (userType === 'sport_coach') {
+            idHint.textContent = 'Format: ABC-YYYY### (Example: COA-2024001)';
+        } else if (userType === 'dance_coach') {
+            idHint.textContent = 'Format: ABC-YYYY### (Example: DAN-2024001)';
         } else {
             idHint.textContent = 'Format: YYYY-##### (Example: 2023-00123)';
         }
         
-        // SIMPLE FORM SUBMISSION HANDLER
-        const form = document.getElementById('registrationForm');
-        const submitBtn = document.getElementById('submit-btn');
+        // Initialize required fields with slight delay
+        setTimeout(updateRequiredFields, 100);
         
-        form.addEventListener('submit', function(e) {
-            console.log('Form submission triggered');
-            
-            // Check if passwords match
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirm_password').value;
-            
-            if (password !== confirmPassword) {
-                e.preventDefault();
-                alert('❌ Passwords do not match!');
-                return false;
-            }
-            
-            if (password.length < 8) {
-                e.preventDefault();
-                alert('❌ Password must be at least 8 characters!');
-                return false;
-            }
-            
-            // Disable button to prevent double submission
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            
-            return true;
-        });
+        // Add change event to primary sport to update position field
+        const primarySport = document.getElementById('primary_sport');
+        if (primarySport) {
+            primarySport.addEventListener('change', updatePositionField);
+        }
         
-        // Ensure button is clickable
-        submitBtn.style.pointerEvents = 'auto';
-        submitBtn.style.opacity = '1';
-        submitBtn.style.cursor = 'pointer';
+        // Add change event to college dropdown
+        const collegeSelect = document.getElementById('college');
+        if (collegeSelect) {
+            collegeSelect.addEventListener('change', updateCourses);
+        }
     });
     </script>
 </body>

@@ -967,7 +967,6 @@ $is_pending = ($student['status'] ?? 'pending') === 'pending';
             <nav class="sidebar-nav">
                 <ul>
                     <li class="active"><a href="student_dashboard.php"><i class="fas fa-home"></i> <span>Home</span></a></li>
-                    <li><a href="#"><i class="fas fa-running"></i> <span>My Sports</span></a></li>
                     <li><a href="#"><i class="fas fa-users"></i> <span>Teammates</span></a></li>
                     <li><a href="#"><i class="fas fa-calendar"></i> <span>Events</span></a></li>
                     <li><a href="profile.php"><i class="fas fa-user"></i> <span>Profile</span></a></li>
