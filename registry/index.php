@@ -7,6 +7,17 @@ $athlete_achievements = $pdo->query("SELECT * FROM homepage_content WHERE sectio
 $dancer_achievements = $pdo->query("SELECT * FROM homepage_content WHERE section_type = 'dance' AND status = 'published' ORDER BY post_date DESC LIMIT 3")->fetchAll();
 $upcoming_events = $pdo->query("SELECT * FROM upcoming_events WHERE event_date >= CURDATE() ORDER BY event_date ASC LIMIT 4")->fetchAll();
 
+// Get athlete and dancer counts
+$total_athletes = $pdo->query("
+    SELECT COUNT(*) FROM students 
+    WHERE student_type = 'athlete' OR student_type = 'both'
+")->fetchColumn();
+
+$total_dancers = $pdo->query("
+    SELECT COUNT(*) FROM students 
+    WHERE student_type = 'dancer' OR student_type = 'both'
+")->fetchColumn();
+
 // Get stats
 $total_users = $pdo->query("SELECT COUNT(*) as total FROM users")->fetch()['total'];
 $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 3")->fetchAll();
@@ -21,7 +32,7 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Original TALENTRIX Styles - Keep exactly as you had */
+        /* Original TALENTRIX Styles */
         .talentrix-homepage {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f8fafc;
@@ -57,6 +68,7 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             display: flex;
             gap: 25px;
             align-items: center;
+            flex-wrap: wrap;
         }
         
         .talentrix-nav-links a {
@@ -101,19 +113,59 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         }
         
         .talentrix-hero-stats {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px 30px;
-            border-radius: 50px;
-            backdrop-filter: blur(10px);
-            margin-top: 20px;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 30px;
         }
         
-        .talentrix-hero-stats strong {
-            font-size: 1.5rem;
-            color: #34d399;
+        .stat-badge {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px 30px;
+            border-radius: 60px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+        
+        .stat-badge:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.25);
+        }
+        
+        .stat-badge.athletes {
+            border-left: 4px solid #8B1E3F;
+        }
+        
+        .stat-badge.dancers {
+            border-left: 4px solid #FFB347;
+        }
+        
+        .stat-badge i {
+            font-size: 28px;
+        }
+        
+        .stat-badge .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            display: block;
+        }
+        
+        .stat-badge .stat-number {
+            font-size: 32px;
+            font-weight: 800;
+            margin-left: 8px;
+        }
+        
+        .stat-badge.athletes .stat-number {
+            color: #8B1E3F;
+        }
+        
+        .stat-badge.dancers .stat-number {
+            color: #FFB347;
         }
         
         .talentrix-cta-buttons {
@@ -169,7 +221,6 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             border-radius: 2px;
         }
         
-        /* NEW: Achievements Grid */
         .achievements-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -230,7 +281,6 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             padding-right: 80px;
         }
         
-        /* NEW: Events Grid */
         .events-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -254,7 +304,6 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             color: #FFB347;
         }
         
-        /* NEW: Quick Links */
         .quick-links-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -276,7 +325,6 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
         
-        /* Original User Cards */
         .talentrix-user-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -305,7 +353,6 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
             margin: 0 auto 20px;
         }
         
-        /* Original Features */
         .talentrix-features-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -347,7 +394,10 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         @media (max-width: 768px) {
             .talentrix-hero h1 { font-size: 2.5rem; }
             .talentrix-navbar { flex-direction: column; }
+            .talentrix-nav-links { justify-content: center; }
             .events-grid { padding: 30px; }
+            .talentrix-hero-stats { flex-direction: column; align-items: center; }
+            .stat-badge { width: 100%; justify-content: center; }
         }
     </style>
 </head>
@@ -360,11 +410,26 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         <div class="talentrix-nav-links">
             <a href="index.php">🏠 Home</a>
             <?php if(isset($_SESSION['user_id'])): ?>
-                <?php if($_SESSION['user_type'] === 'admin'): ?>
-                    <a href="dashboard.php">📊 Dashboard</a>
+                <?php 
+                $user_type = $_SESSION['user_type'] ?? '';
+                
+                if($user_type === 'admin'): ?>
+                    <a href="admin_pages.php?page=dashboard">📊 Dashboard</a>
                     <a href="manage_homepage.php">📝 Manage Homepage</a>
+                    <a href="manage_images.php">📸 Manage Images</a>
+                <?php elseif($user_type === 'athletics_admin'): ?>
+                    <a href="athletics_dashboard.php">📊 Athletics Dashboard</a>
+                <?php elseif($user_type === 'dance_admin'): ?>
+                    <a href="dance_dashboard.php">📊 Dance Dashboard</a>
+                <?php elseif($user_type === 'sport_coach'): ?>
+                    <a href="coach_dashboard.php">📊 Coach Dashboard</a>
+                <?php elseif($user_type === 'dance_coach'): ?>
+                    <a href="dance_trainer_dashboard.php">📊 Dance Trainer Dashboard</a>
+                <?php elseif($user_type === 'student'): ?>
+                    <a href="student_dashboard.php">📊 Student Dashboard</a>
                 <?php endif; ?>
-                <a href="logout.php">🚪 Logout (<?php echo htmlspecialchars($_SESSION['username']); ?>)</a>
+                <a href="profile.php">👤 Profile</a>
+                <a href="logout.php">🚪 Logout (<?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>)</a>
             <?php else: ?>
                 <a href="login.php" class="login-btn">🔑 Login</a>
                 <a href="register.php">📝 Register</a>
@@ -377,9 +442,20 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         <p>Designed to manage, track, and organize records of athletes, performers, and graduates. Provides efficient data management, reporting, and monitoring for schools and organizations.</p>
         
         <div class="talentrix-hero-stats">
-            <span>📈 Total Registered:</span>
-            <strong><?php echo $total_users; ?></strong>
-            <span>users</span>
+            <div class="stat-badge athletes">
+                <i class="fas fa-running"></i>
+                <div>
+                    <span class="stat-label">ATHLETES</span>
+                    <strong class="stat-number"><?php echo number_format($total_athletes); ?></strong>
+                </div>
+            </div>
+            <div class="stat-badge dancers">
+                <i class="fas fa-music"></i>
+                <div>
+                    <span class="stat-label">DANCERS</span>
+                    <strong class="stat-number"><?php echo number_format($total_dancers); ?></strong>
+                </div>
+            </div>
         </div>
         
         <?php if(!isset($_SESSION['user_id'])): ?>
@@ -390,147 +466,134 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         <?php endif; ?>
     </div>
 
-    <!-- ACHIEVEMENTS SECTION (Dynamic from Admin) -->
-<div class="talentrix-section">
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 40px; align-items: start;">
-        <!-- Left Column: Achievements -->
-        <div>
-            <h2 style="text-align: left; margin-bottom: 30px;">🏆 LATEST ACHIEVEMENTS</h2>
-            <?php 
-            $all_achievements = array_merge($athlete_achievements, $dancer_achievements);
-            usort($all_achievements, function($a, $b) {
-                return strtotime($b['post_date']) - strtotime($a['post_date']);
-            });
-            $all_achievements = array_slice($all_achievements, 0, 3);
-            
-            if(!empty($all_achievements)): 
-            ?>
-            <div class="achievements-grid" style="grid-template-columns: 1fr;">
-                <?php foreach($all_achievements as $achievement): ?>
-                <div class="achievement-card <?php echo $achievement['section_type'] == 'dance' ? 'dance' : ''; ?>" style="margin-bottom: 20px;">
-                    <span class="achievement-badge <?php echo $achievement['section_type'] == 'athletics' ? 'badge-athletics' : 'badge-dance'; ?>">
-                        <?php echo htmlspecialchars($achievement['badge']); ?>
-                    </span>
-                    <div class="achievement-date">
-                        📅 <?php echo date('F d, Y', strtotime($achievement['post_date'])); ?>
+    <!-- ACHIEVEMENTS SECTION -->
+    <div class="talentrix-section">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 40px; align-items: start;">
+            <div>
+                <h2 style="text-align: left; margin-bottom: 30px;">🏆 LATEST ACHIEVEMENTS</h2>
+                <?php 
+                $all_achievements = array_merge($athlete_achievements, $dancer_achievements);
+                usort($all_achievements, function($a, $b) {
+                    return strtotime($b['post_date']) - strtotime($a['post_date']);
+                });
+                $all_achievements = array_slice($all_achievements, 0, 3);
+                
+                if(!empty($all_achievements)): 
+                ?>
+                <div class="achievements-grid" style="grid-template-columns: 1fr;">
+                    <?php foreach($all_achievements as $achievement): ?>
+                    <div class="achievement-card <?php echo $achievement['section_type'] == 'dance' ? 'dance' : ''; ?>" style="margin-bottom: 20px;">
+                        <span class="achievement-badge <?php echo $achievement['section_type'] == 'athletics' ? 'badge-athletics' : 'badge-dance'; ?>">
+                            <?php echo htmlspecialchars($achievement['badge']); ?>
+                        </span>
+                        <div class="achievement-date">
+                            📅 <?php echo date('F d, Y', strtotime($achievement['post_date'])); ?>
+                        </div>
+                        <h3 class="achievement-title"><?php echo htmlspecialchars($achievement['title']); ?></h3>
+                        <p><?php echo htmlspecialchars(substr($achievement['content'], 0, 150)) . '...'; ?></p>
                     </div>
-                    <h3 class="achievement-title"><?php echo htmlspecialchars($achievement['title']); ?></h3>
-                    <p><?php echo htmlspecialchars(substr($achievement['content'], 0, 150)) . '...'; ?></p>
-                    <a href="#" style="color: #10b981; font-weight: 600; text-decoration: none; display: inline-block; margin-top: 15px;">
-                        Continue reading →
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            
+            <div class="image-sidebar">
+                <div style="background: linear-gradient(135deg, #8B1E3F 0%, #6b152f 100%); padding: 30px; border-radius: 20px; color: white; margin-bottom: 30px;">
+                    <h3 style="font-size: 1.8rem; margin-bottom: 15px;">📸 FEATURED</h3>
+                    <p>Latest moments from our athletes and dancers</p>
+                </div>
+                
+                <div class="image-gallery" style="display: grid; gap: 20px;">
+                    <div class="gallery-item" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                        <div style="height: 200px; background: linear-gradient(135deg, #0a2540 20%, #8B1E3F 100%); display: flex; align-items: center; justify-content: center; position: relative;">
+                            <i class="fas fa-basketball-ball" style="font-size: 80px; color: rgba(255,255,255,0.3);"></i>
+                            <span style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.5); color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">🏀 Athletics</span>
+                        </div>
+                        <div style="padding: 20px;">
+                            <h4 style="color: #0a2540;">Basketball Team Training</h4>
+                            <p style="color: #718096; font-size: 0.9rem;">February 2025</p>
+                        </div>
+                    </div>
+                    
+                    <div class="gallery-item" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                        <div style="height: 200px; background: linear-gradient(135deg, #FFB347 20%, #f39c12 100%); display: flex; align-items: center; justify-content: center; position: relative;">
+                            <i class="fas fa-music" style="font-size: 80px; color: rgba(255,255,255,0.3);"></i>
+                            <span style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.5); color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">💃 Dance Troupe</span>
+                        </div>
+                        <div style="padding: 20px;">
+                            <h4 style="color: #0a2540;">Street Dance Competition</h4>
+                            <p style="color: #718096; font-size: 0.9rem;">January 2025</p>
+                        </div>
+                    </div>
+                    
+                    <div class="gallery-item" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                        <div style="height: 200px; background: linear-gradient(135deg, #10b981 20%, #059669 100%); display: flex; align-items: center; justify-content: center; position: relative;">
+                            <i class="fas fa-volleyball-ball" style="font-size: 80px; color: rgba(255,255,255,0.3);"></i>
+                            <span style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.5); color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">🏐 Volleyball</span>
+                        </div>
+                        <div style="padding: 20px;">
+                            <h4 style="color: #0a2540;">Women's Volleyball Champions</h4>
+                            <p style="color: #718096; font-size: 0.9rem;">December 2024</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <?php if(isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin'): ?>
+                <div style="margin-top: 30px; text-align: center;">
+                    <a href="manage_images.php" style="display: inline-block; padding: 12px 30px; background: #0a2540; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+                        <i class="fas fa-upload"></i> Upload New Image
                     </a>
                 </div>
-                <?php endforeach; ?>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
-        </div>
-        
-        <!-- Right Column: Image Sidebar -->
-        <div class="image-sidebar">
-            <div style="background: linear-gradient(135deg, #8B1E3F 0%, #6b152f 100%); padding: 30px; border-radius: 20px; color: white; margin-bottom: 30px;">
-                <h3 style="font-size: 1.8rem; margin-bottom: 15px;">📸 FEATURED</h3>
-                <p>Latest moments from our athletes and dancers</p>
-            </div>
-            
-            <!-- Image Gallery -->
-            <div class="image-gallery" style="display: grid; gap: 20px;">
-                <!-- Image 1 - Athletics -->
-                <div class="gallery-item" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-                    <div style="height: 200px; background: linear-gradient(135deg, #0a2540 20%, #8B1E3F 100%); display: flex; align-items: center; justify-content: center; position: relative;">
-                        <i class="fas fa-basketball-ball" style="font-size: 80px; color: rgba(255,255,255,0.3);"></i>
-                        <span style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.5); color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">🏀 Athletics</span>
-                    </div>
-                    <div style="padding: 20px;">
-                        <h4 style="color: #0a2540;">Basketball Team Training</h4>
-                        <p style="color: #718096; font-size: 0.9rem;">February 2025</p>
-                    </div>
-                </div>
-                
-                <!-- Image 2 - Dance -->
-                <div class="gallery-item" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-                    <div style="height: 200px; background: linear-gradient(135deg, #FFB347 20%, #f39c12 100%); display: flex; align-items: center; justify-content: center; position: relative;">
-                        <i class="fas fa-music" style="font-size: 80px; color: rgba(255,255,255,0.3);"></i>
-                        <span style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.5); color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">💃 Dance Troupe</span>
-                    </div>
-                    <div style="padding: 20px;">
-                        <h4 style="color: #0a2540;">Street Dance Competition</h4>
-                        <p style="color: #718096; font-size: 0.9rem;">January 2025</p>
-                    </div>
-                </div>
-                
-                <!-- Image 3 - Volleyball -->
-                <div class="gallery-item" style="background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-                    <div style="height: 200px; background: linear-gradient(135deg, #10b981 20%, #059669 100%); display: flex; align-items: center; justify-content: center; position: relative;">
-                        <i class="fas fa-volleyball-ball" style="font-size: 80px; color: rgba(255,255,255,0.3);"></i>
-                        <span style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.5); color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem;">🏐 Volleyball</span>
-                    </div>
-                    <div style="padding: 20px;">
-                        <h4 style="color: #0a2540;">Women's Volleyball Champions</h4>
-                        <p style="color: #718096; font-size: 0.9rem;">December 2024</p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Upload Button (for admin) -->
-            <?php if(isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin'): ?>
-            <div style="margin-top: 30px; text-align: center;">
-                <a href="manage_images.php" style="display: inline-block; padding: 12px 30px; background: #0a2540; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
-                    <i class="fas fa-upload"></i> Upload New Image
-                </a>
-            </div>
-            <?php endif; ?>
         </div>
     </div>
-</div>
 
-    <!-- EVENTS SECTION (Dynamic from Admin) -->
-<div class="talentrix-section">
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 40px; align-items: start;">
-        <!-- Left Column: Events -->
-        <div>
-            <h2 style="text-align: left; margin-bottom: 30px;">📅 UPCOMING EVENTS</h2>
-            <?php if(!empty($upcoming_events)): ?>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px;">
-                <?php foreach($upcoming_events as $event): ?>
-                <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); border-left: 5px solid <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>;">
-                    <div style="font-size: 1.5rem; font-weight: 700; color: <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>;">
-                        <?php echo date('M d', strtotime($event['event_date'])); ?>
+    <!-- EVENTS SECTION -->
+    <div class="talentrix-section">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 40px; align-items: start;">
+            <div>
+                <h2 style="text-align: left; margin-bottom: 30px;">📅 UPCOMING EVENTS</h2>
+                <?php if(!empty($upcoming_events)): ?>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px;">
+                    <?php foreach($upcoming_events as $event): ?>
+                    <div style="background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); border-left: 5px solid <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>;">
+                        <div style="font-size: 1.5rem; font-weight: 700; color: <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>;">
+                            <?php echo date('M d', strtotime($event['event_date'])); ?>
+                        </div>
+                        <h3 style="margin: 10px 0; color: #0a2540;"><?php echo htmlspecialchars($event['event_title']); ?></h3>
+                        <p style="color: #718096; font-size: 0.9rem;"><?php echo htmlspecialchars($event['event_description']); ?></p>
+                        <span style="display: inline-block; margin-top: 10px; padding: 3px 12px; background: <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>; color: white; border-radius: 15px; font-size: 0.7rem;">
+                            <?php echo ucfirst($event['event_type']); ?>
+                        </span>
                     </div>
-                    <h3 style="margin: 10px 0; color: #0a2540;"><?php echo htmlspecialchars($event['event_title']); ?></h3>
-                    <p style="color: #718096; font-size: 0.9rem;"><?php echo htmlspecialchars($event['event_description']); ?></p>
-                    <span style="display: inline-block; margin-top: 10px; padding: 3px 12px; background: <?php echo $event['event_type'] == 'athletics' ? '#8B1E3F' : '#FFB347'; ?>; color: white; border-radius: 15px; font-size: 0.7rem;">
-                        <?php echo ucfirst($event['event_type']); ?>
-                    </span>
+                    <?php endforeach; ?>
                 </div>
-                <?php endforeach; ?>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
-        </div>
-        
-        <!-- Right Column: Event Image -->
-        <div class="event-image-sidebar">
-            <div style="background: linear-gradient(135deg, #0a2540 0%, #1a365d 100%); border-radius: 20px; padding: 30px; color: white; text-align: center;">
-                <i class="fas fa-calendar-check" style="font-size: 60px; margin-bottom: 20px; color: #FFB347;"></i>
-                <h3 style="font-size: 1.8rem; margin-bottom: 10px;">Don't Miss Out!</h3>
-                <p style="opacity: 0.9;">Register now for upcoming tryouts and competitions</p>
-                
-                <!-- Calendar Preview -->
-                <div style="margin-top: 30px; background: rgba(255,255,255,0.1); border-radius: 15px; padding: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <span style="font-weight: 600;">February 2025</span>
-                        <span><i class="fas fa-chevron-right"></i></span>
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; font-size: 0.8rem;">
-                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                        <?php for($i=1; $i<=28; $i++): ?>
-                        <span style="background: <?php echo $i == 15 ? '#FFB347' : 'rgba(255,255,255,0.1)'; ?>; color: <?php echo $i == 15 ? '#0a2540' : 'white'; ?>; padding: 5px; border-radius: 5px;"><?php echo $i; ?></span>
-                        <?php endfor; ?>
+            
+            <div class="event-image-sidebar">
+                <div style="background: linear-gradient(135deg, #0a2540 0%, #1a365d 100%); border-radius: 20px; padding: 30px; color: white; text-align: center;">
+                    <i class="fas fa-calendar-check" style="font-size: 60px; margin-bottom: 20px; color: #FFB347;"></i>
+                    <h3 style="font-size: 1.8rem; margin-bottom: 10px;">Don't Miss Out!</h3>
+                    <p style="opacity: 0.9;">Register now for upcoming tryouts and competitions</p>
+                    
+                    <div style="margin-top: 30px; background: rgba(255,255,255,0.1); border-radius: 15px; padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <span style="font-weight: 600;">February 2025</span>
+                            <span><i class="fas fa-chevron-right"></i></span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; font-size: 0.8rem;">
+                            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                            <?php for($i=1; $i<=28; $i++): ?>
+                            <span style="background: <?php echo $i == 15 ? '#FFB347' : 'rgba(255,255,255,0.1)'; ?>; color: <?php echo $i == 15 ? '#0a2540' : 'white'; ?>; padding: 5px; border-radius: 5px;"><?php echo $i; ?></span>
+                            <?php endfor; ?>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
     <!-- QUICK LINKS -->
     <div class="talentrix-section">
@@ -555,7 +618,7 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         </div>
     </div>
 
-    <!-- RECENT USERS (Original) -->
+    <!-- RECENT USERS -->
     <div class="talentrix-section">
         <h2>👥 RECENT MEMBERS</h2>
         <div class="talentrix-user-cards">
@@ -574,7 +637,7 @@ $recent_users = $pdo->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 
         </div>
     </div>
 
-    <!-- FEATURES (Original) -->
+    <!-- FEATURES -->
     <div class="talentrix-section">
         <h2>✨ FEATURES</h2>
         <div class="talentrix-features-grid">

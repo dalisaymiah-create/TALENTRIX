@@ -236,6 +236,108 @@ body {
     font-weight: 600;
 }
 
+/* ===== ATHLETE/DANCER STATS STYLES ===== */
+.stat-card.athletes {
+    border-left: 5px solid #8B1E3F;
+}
+
+.stat-card.athletes .stat-icon {
+    color: #8B1E3F;
+}
+
+.stat-card.dancers {
+    border-left: 5px solid #FFB347;
+}
+
+.stat-card.dancers .stat-icon {
+    color: #FFB347;
+}
+
+.stat-card.sport-coaches {
+    border-left: 5px solid #10b981;
+}
+
+.stat-card.dance-trainors {
+    border-left: 5px solid #f59e0b;
+}
+
+.stat-number-large {
+    font-size: 32px !important;
+}
+
+.athlete-color { 
+    color: #8B1E3F; 
+}
+
+.dancer-color { 
+    color: #FFB347; 
+}
+
+.sport-color { 
+    color: #10b981; 
+}
+
+.dance-color { 
+    color: #f59e0b; 
+}
+
+/* Hero stats styling */
+.talentrix-hero-stats {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 30px;
+}
+
+.stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 15px 30px;
+    border-radius: 60px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+}
+
+.stat-badge:hover {
+    transform: translateY(-5px);
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.stat-badge.athletes {
+    border-left: 4px solid #8B1E3F;
+}
+
+.stat-badge.dancers {
+    border-left: 4px solid #FFB347;
+}
+
+.stat-badge i {
+    font-size: 28px;
+}
+
+.stat-badge .stat-label {
+    font-size: 14px;
+    opacity: 0.9;
+    display: block;
+}
+
+.stat-badge .stat-number {
+    font-size: 32px;
+    font-weight: 800;
+    margin-left: 8px;
+}
+
+.stat-badge.athletes .stat-number {
+    color: #8B1E3F;
+}
+
+.stat-badge.dancers .stat-number {
+    color: #FFB347;
+}
+
 /* ===== DASHBOARD CARDS ===== */
 .dashboard-card {
     background: white;
@@ -380,6 +482,16 @@ body {
     color: #333; 
 }
 
+.badge-sport_coach { 
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+    color: white; 
+}
+
+.badge-dance_coach { 
+    background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+    color: white; 
+}
+
 /* ===== CHART ===== */
 .chart-container {
     margin-top: 25px;
@@ -509,6 +621,373 @@ body {
     letter-spacing: 1px;
 }
 
+/* ===== MENU STYLES (for non-dashboard pages) ===== */
+.menu {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: white;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.menu h1 {
+    font-size: 1.8rem;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.menu-links {
+    display: flex;
+    gap: 2rem;
+}
+
+.menu-links a {
+    color: white;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    transition: background 0.3s;
+}
+
+.menu-links a:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.menu-links a.active {
+    background: rgba(255,255,255,0.3);
+    font-weight: bold;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-info span {
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+/* ===== DASHBOARD CONTAINER (alternative) ===== */
+.dashboard {
+    max-width: 1400px;
+    margin: 2rem auto;
+    padding: 0 2rem;
+}
+
+/* ===== HEADER SECTION (for non-dashboard) ===== */
+.header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 15px;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.header h2 {
+    font-size: 1.2rem;
+    font-weight: 300;
+    margin-bottom: 0.5rem;
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+/* ===== STATS GRID (for non-dashboard) ===== */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+
+.stat-card h3 {
+    color: #666;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #333;
+    margin: 0.5rem 0;
+}
+
+.stat-card small {
+    color: #4caf50;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ===== TWO COLUMN LAYOUT ===== */
+.two-column {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* ===== CARD STYLES (for non-dashboard) ===== */
+.events-card, .team-card, .achievements-card, .approvals-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.card-header h3 {
+    font-size: 1.2rem;
+    color: #333;
+}
+
+.view-all {
+    color: #667eea;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* ===== EVENT ITEMS ===== */
+.event-item {
+    padding: 1rem 0;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.event-item:last-child {
+    border-bottom: none;
+}
+
+.event-date {
+    font-weight: bold;
+    color: #667eea;
+    min-width: 60px;
+}
+
+.event-details {
+    flex: 1;
+    margin-left: 1rem;
+}
+
+.event-details strong {
+    color: #333;
+    display: block;
+    margin-bottom: 0.3rem;
+}
+
+.event-details small {
+    color: #999;
+    font-size: 0.85rem;
+}
+
+.event-location {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* ===== TEAM MEMBERS ===== */
+.team-member {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+.team-member:last-child {
+    border-bottom: none;
+}
+
+.member-info strong {
+    color: #333;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.member-info small {
+    color: #999;
+}
+
+.status-badge {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.status-active {
+    background: #e8f5e9;
+    color: #4caf50;
+}
+
+.status-pending {
+    background: #fff3e0;
+    color: #ff9800;
+}
+
+/* ===== APPROVALS TABLE ===== */
+.approvals-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.approvals-table th {
+    text-align: left;
+    padding: 1rem 0.5rem;
+    color: #666;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-bottom: 2px solid #eee;
+}
+
+.approvals-table td {
+    padding: 1rem 0.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.approvals-table tr:hover {
+    background: #f9f9f9;
+}
+
+.btn-approve {
+    background: #4caf50;
+    color: white;
+    border: none;
+    padding: 0.4rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 0.5rem;
+}
+
+.btn-reject {
+    background: #ff4757;
+    color: white;
+    border: none;
+    padding: 0.4rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.btn-small {
+    padding: 0.3rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+/* ===== QUICK ACTIONS ===== */
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.action-btn {
+    padding: 1rem;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.3s, opacity 0.3s;
+}
+
+.action-btn:hover {
+    transform: translateY(-2px);
+    opacity: 0.9;
+}
+
+.btn-primary { background: #667eea; }
+.btn-success { background: #4caf50; }
+.btn-warning { background: #ff9800; }
+.btn-info { background: #00bcd4; }
+
+/* ===== LOGOUT BUTTON ===== */
+.logout-btn {
+    display: block;
+    width: 100%;
+    padding: 1rem;
+    background: #ff4757;
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 8px;
+    margin-top: 2rem;
+    font-weight: 600;
+    transition: background 0.3s;
+}
+
+.logout-btn:hover {
+    background: #ff3344;
+}
+
+/* ===== PENDING PAGE ===== */
+.pending-container {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.pending-card {
+    background: white;
+    padding: 3rem;
+    border-radius: 20px;
+    text-align: center;
+    max-width: 500px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+
+.loader {
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #667eea;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 2rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1200px) {
     .main-content {
@@ -575,6 +1054,20 @@ body {
     .admin-pages-grid {
         grid-template-columns: repeat(2, 1fr);
     }
+    
+    .menu {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .menu-links {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .two-column {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 576px) {
@@ -590,5 +1083,25 @@ body {
         flex-direction: column;
         align-items: flex-start;
         gap: 15px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .talentrix-hero-stats {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .stat-badge {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
     }
 }

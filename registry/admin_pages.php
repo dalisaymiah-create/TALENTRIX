@@ -1,15 +1,33 @@
 <?php
+// admin_pages.php - FIXED AUTHENTICATION with Athlete/Dancer Counters
 session_start();
 require_once 'db.php';
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'admin') {
+// IMPORTANT: Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
 }
 
-// Get the page parameter
+// Check if user is admin - if not, redirect to correct dashboard
+if ($_SESSION['user_type'] !== 'admin') {
+    if ($_SESSION['user_type'] === 'sport_coach') {
+        header('Location: coach_dashboard.php');
+        exit();
+    } elseif ($_SESSION['user_type'] === 'dance_coach') {
+        header('Location: dance_trainer_dashboard.php');
+        exit();
+    } elseif ($_SESSION['user_type'] === 'student') {
+        header('Location: student_dashboard.php');
+        exit();
+    } else {
+        header('Location: login.php');
+        exit();
+    }
+}
+
 $page = $_GET['page'] ?? 'dashboard';
+
 
 // List of allowed pages
 $allowed_pages = [
@@ -37,12 +55,30 @@ $stats = [
     'total_admins' => 0,
     'total_faculty' => 0,
     'pending_verifications' => 0,
-    'recent_registrations' => 0
+    'recent_registrations' => 0,
+    'total_athletes' => 0,
+    'total_dancers' => 0,
+    'total_sport_coaches' => 0,
+    'total_dance_coaches' => 0
 ];
 
+// Get athlete and dancer counts
+$stmt = $pdo->query("SELECT COUNT(*) FROM students WHERE student_type = 'athlete' OR student_type = 'both'");
+$stats['total_athletes'] = $stmt->fetchColumn();
+
+$stmt = $pdo->query("SELECT COUNT(*) FROM students WHERE student_type = 'dancer' OR student_type = 'both'");
+$stats['total_dancers'] = $stmt->fetchColumn();
+
+// Get coach counts
+$stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE user_type = 'sport_coach'");
+$stats['total_sport_coaches'] = $stmt->fetchColumn();
+
+$stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE user_type = 'dance_coach'");
+$stats['total_dance_coaches'] = $stmt->fetchColumn();
+
+// Regular stats
 $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE user_type = 'student'");
 $stats['total_students'] = $stmt->fetch()['count'];
-
 
 $stmt = $pdo->query("SELECT COUNT(*) as count FROM users WHERE user_type = 'faculty'");
 $stats['total_faculty'] = $stmt->fetch()['count'];
@@ -76,6 +112,41 @@ if ($hour < 12) {
     <title>TALENTRIX Admin - Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Additional styles for athlete/dancer cards */
+        .stat-card.athletes {
+            border-left: 5px solid #8B1E3F;
+        }
+        
+        .stat-card.athletes .stat-icon {
+            color: #8B1E3F;
+        }
+        
+        .stat-card.dancers {
+            border-left: 5px solid #FFB347;
+        }
+        
+        .stat-card.dancers .stat-icon {
+            color: #FFB347;
+        }
+        
+        .stat-card.sport-coaches {
+            border-left: 5px solid #10b981;
+        }
+        
+        .stat-card.dance-trainors {
+            border-left: 5px solid #f59e0b;
+        }
+        
+        .stat-number-large {
+            font-size: 32px !important;
+        }
+        
+        .athlete-color { color: #8B1E3F; }
+        .dancer-color { color: #FFB347; }
+        .sport-color { color: #10b981; }
+        .dance-color { color: #f59e0b; }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
@@ -142,28 +213,44 @@ if ($hour < 12) {
                 </div>
             </header>
             
+            <!-- UPDATED: Stats Grid with 4 columns for Athletes, Dancers, Sports Coaches, Dance Trainors -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; margin-bottom: 30px;">
+                <div class="stat-card athletes">
+                    <div class="stat-icon" style="font-size: 42px; margin-bottom: 15px;">🏀</div>
+                    <div class="stat-info">
+                        <h3>ATHLETES</h3>
+                        <p class="stat-number stat-number-large"><?php echo number_format($stats['total_athletes']); ?></p>
+                        <p class="stat-change" style="color: #8B1E3F;">Student Athletes</p>
+                    </div>
+                </div>
                 
-           <!-- Stats Grid -->
-<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 30px;">
-    <div class="stat-card stat-students">
-        <div class="stat-icon">🎓</div>
-        <div class="stat-info">
-            <h3>STUDENTS</h3>
-            <p class="stat-number"><?php echo number_format($stats['total_students']); ?></p>
-            <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_students'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
-        </div>
-    </div>
-    
-    <div class="stat-card stat-faculty">
-        <div class="stat-icon">👨‍🏫</div>
-        <div class="stat-info">
-            <h3>FACULTY</h3>
-            <p class="stat-number"><?php echo number_format($stats['total_faculty']); ?></p>
-            <p class="stat-change"><?php echo $stats['total_users'] > 0 ? round(($stats['total_faculty'] / $stats['total_users']) * 100, 1) : 0; ?>% of total</p>
-        </div>
-    </div>
-</div>
+                <div class="stat-card dancers">
+                    <div class="stat-icon" style="font-size: 42px; margin-bottom: 15px;">💃</div>
+                    <div class="stat-info">
+                        <h3>DANCERS</h3>
+                        <p class="stat-number stat-number-large"><?php echo number_format($stats['total_dancers']); ?></p>
+                        <p class="stat-change" style="color: #FFB347;">Student Dancers</p>
+                    </div>
+                </div>
                 
+                <div class="stat-card sport-coaches">
+                    <div class="stat-icon" style="font-size: 42px; margin-bottom: 15px;">👨‍🏫</div>
+                    <div class="stat-info">
+                        <h3>SPORTS COACHES</h3>
+                        <p class="stat-number stat-number-large"><?php echo number_format($stats['total_sport_coaches']); ?></p>
+                        <p class="stat-change" style="color: #10b981;">Faculty</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card dance-trainors">
+                    <div class="stat-icon" style="font-size: 42px; margin-bottom: 15px;">🎭</div>
+                    <div class="stat-info">
+                        <h3>DANCE TRAINORS</h3>
+                        <p class="stat-number stat-number-large"><?php echo number_format($stats['total_dance_coaches']); ?></p>
+                        <p class="stat-change" style="color: #f59e0b;">Faculty</p>
+                    </div>
+                </div>
+            </div>
 
             <!-- Dashboard Sections -->
             <div class="dashboard-sections">
@@ -258,10 +345,15 @@ if ($hour < 12) {
                             <div class="chart-item">
                                 <div class="chart-label">
                                     <span class="chart-color" style="background-color: <?php 
-                                        $colors = ['admin' => '#ff6b6b', 'student' => '#4ecdc4', 'faculty' => '#fdcb6e'];
+                                        $colors = ['admin' => '#ff6b6b', 'student' => '#4ecdc4', 'sport_coach' => '#10b981', 'dance_coach' => '#f59e0b'];
                                         echo $colors[$type['user_type']] ?? '#cccccc';
                                     ?>"></span>
-                                    <?php echo ucfirst($type['user_type']); ?>
+                                    <?php 
+                                        $type_name = $type['user_type'];
+                                        if($type_name == 'sport_coach') $type_name = 'Sports Coach';
+                                        if($type_name == 'dance_coach') $type_name = 'Dance Trainer';
+                                        echo ucfirst(str_replace('_', ' ', $type_name)); 
+                                    ?>
                                 </div>
                                 <div class="chart-bar">
                                     <div class="chart-fill" style="width: <?php echo ($stats['total_users'] > 0) ? ($type['count'] / $stats['total_users']) * 100 : 0; ?>%; 
@@ -286,16 +378,16 @@ if ($hour < 12) {
                         </div>
                         <div class="connected-stats">
                             <div class="stat-item">
-                                <div class="stat-item-label">Total</div>
+                                <div class="stat-item-label">Total Users</div>
                                 <div class="stat-item-value"><?php echo number_format($stats['total_users']); ?></div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-item-label">Connected</div>
-                                <div class="stat-item-value"><?php echo number_format($stats['total_students'] + $stats['total_faculty']); ?></div>
+                                <div class="stat-item-label">Athletes + Dancers</div>
+                                <div class="stat-item-value"><?php echo number_format($stats['total_athletes'] + $stats['total_dancers']); ?></div>
                             </div>
                             <div class="stat-item">
-                                <div class="stat-item-label">Active</div>
-                                <div class="stat-item-value"><?php echo number_format($stats['total_users'] - $stats['total_admins']); ?></div>
+                                <div class="stat-item-label">Total Coaches</div>
+                                <div class="stat-item-value"><?php echo number_format($stats['total_sport_coaches'] + $stats['total_dance_coaches']); ?></div>
                             </div>
                             <div class="stat-item">
                                 <div class="stat-item-label">Pending</div>
