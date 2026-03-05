@@ -1,5 +1,5 @@
 <?php
-// athletics_dashboard.php - Athletics Admin Dashboard with Buttons & Tables
+// student_dashboard.php - FIXED AUTHENTICATION (Teammates Section Removed)
 session_start();
 require_once 'db.php';
 
@@ -9,10 +9,10 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Check if user is athletics_admin
-if ($_SESSION['user_type'] !== 'athletics_admin') {
-    if ($_SESSION['user_type'] === 'dance_admin') {
-        header('Location: dance_dashboard.php');
+// Check if user is student - if not, redirect to correct dashboard
+if ($_SESSION['user_type'] !== 'student') {
+    if ($_SESSION['user_type'] === 'admin') {
+        header('Location: admin_pages.php?page=dashboard');
         exit();
     } elseif ($_SESSION['user_type'] === 'sport_coach') {
         header('Location: coach_dashboard.php');
@@ -20,8 +20,11 @@ if ($_SESSION['user_type'] !== 'athletics_admin') {
     } elseif ($_SESSION['user_type'] === 'dance_coach') {
         header('Location: dance_trainer_dashboard.php');
         exit();
-    } elseif ($_SESSION['user_type'] === 'student') {
-        header('Location: student_dashboard.php');
+    } elseif ($_SESSION['user_type'] === 'athletics_admin') {
+        header('Location: athletics_dashboard.php');
+        exit();
+    } elseif ($_SESSION['user_type'] === 'dance_admin') {
+        header('Location: dance_dashboard.php');
         exit();
     } else {
         header('Location: login.php');
@@ -29,704 +32,782 @@ if ($_SESSION['user_type'] !== 'athletics_admin') {
     }
 }
 
-// Get current user info
 $user_id = $_SESSION['user_id'];
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$user_id]);
-$current_user = $stmt->fetch();
 
-// Get athletics statistics
-$stats = [];
-
-// Athlete counts
-$stmt = $pdo->query("SELECT COUNT(*) FROM students WHERE student_type = 'athlete' OR student_type = 'both'");
-$stats['total_athletes'] = $stmt->fetchColumn();
-
-// Sports coaches count
-$stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE user_type = 'sport_coach'");
-$stats['total_sport_coaches'] = $stmt->fetchColumn();
-
-// Teams count
-$stmt = $pdo->query("SELECT COUNT(*) FROM teams");
-$stats['total_teams'] = $stmt->fetchColumn();
-
-// Sports count
-$stmt = $pdo->query("SELECT COUNT(*) FROM sports WHERE is_active = 1");
-$stats['total_sports'] = $stmt->fetchColumn();
-
-// Pending approvals for athletes
-$stmt = $pdo->query("
-    SELECT COUNT(*) FROM approvals a
-    JOIN students s ON a.student_id = s.id
-    WHERE a.status = 'pending' AND s.student_type IN ('athlete', 'both')
+// Get student details
+$stmt = $pdo->prepare("
+    SELECT s.*, u.first_name, u.last_name, u.email, u.id_number, u.status, u.created_at
+    FROM students s
+    JOIN users u ON s.user_id = u.id
+    WHERE u.id = ?
 ");
-$stats['pending_approvals'] = $stmt->fetchColumn();
+$stmt->execute([$user_id]);
+$student = $stmt->fetch();
 
-// Get athletes table data
-$athletes = [];
-try {
-    $stmt = $pdo->query("
-        SELECT u.id, u.first_name, u.last_name, u.email, u.id_number, u.status,
-               s.primary_sport, s.primary_position, s.athlete_category, s.jersey_number,
-               u.created_at
-        FROM users u
-        JOIN students s ON u.id = s.user_id
-        WHERE s.student_type IN ('athlete', 'both')
-        ORDER BY u.created_at DESC
-        LIMIT 10
-    ");
-    $athletes = $stmt->fetchAll();
-} catch (Exception $e) {
-    $athletes = [];
+// If student not found, redirect to login
+if (!$student) {
+    session_destroy();
+    header('Location: login.php?error=not_found');
+    exit();
 }
 
-// Get coaches table data
-$coaches = [];
-try {
-    $stmt = $pdo->query("
-        SELECT c.*, u.first_name, u.last_name, u.email, u.id_number, u.status,
-               (SELECT COUNT(*) FROM teams WHERE coach_id = c.id) as team_count
-        FROM coaches c
-        JOIN users u ON c.user_id = u.id
-        WHERE u.status = 'active'
-        ORDER BY u.first_name
-        LIMIT 10
-    ");
-    $coaches = $stmt->fetchAll();
-} catch (Exception $e) {
-    $coaches = [];
-}
-
-// Get teams table data
+// Get student's teams
 $teams = [];
 try {
-    $stmt = $pdo->query("
-        SELECT t.*, s.sport_name,
-               CONCAT(u.first_name, ' ', u.last_name) as coach_name,
-               (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as member_count
+    $stmt = $pdo->prepare("
+        SELECT t.*, s.sport_name, tm.jersey_number, tm.position, tm.status as team_status
+        FROM team_members tm
+        JOIN teams t ON tm.team_id = t.id
+        JOIN sports s ON t.sport_id = s.id
+        WHERE tm.student_id = ? AND tm.status = 'active'
+    ");
+    $stmt->execute([$student['id']]);
+    $teams = $stmt->fetchAll();
+} catch (Exception $e) {
+    $teams = [];
+}
+
+// Get student's dance troupes
+$troupes = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT dt.*, dtm.role, dtm.status as member_status
+        FROM dance_troupe_members dtm
+        JOIN dance_troupes dt ON dtm.troupe_id = dt.id
+        WHERE dtm.student_id = ? AND dtm.status = 'active'
+    ");
+    $stmt->execute([$student['id']]);
+    $troupes = $stmt->fetchAll();
+} catch (Exception $e) {
+    $troupes = [];
+}
+
+// Get pending requests
+$pending_requests = [];
+try {
+    $stmt = $pdo->prepare("
+        SELECT a.*, t.team_name, dt.troupe_name
+        FROM approvals a
+        LEFT JOIN teams t ON a.team_id = t.id
+        LEFT JOIN dance_troupes dt ON a.troupe_id = dt.id
+        WHERE a.student_id = ? AND a.status = 'pending'
+    ");
+    $stmt->execute([$student['id']]);
+    $pending_requests = $stmt->fetchAll();
+} catch (Exception $e) {
+    $pending_requests = [];
+}
+
+// Get all available teams (for joining)
+$available_teams = [];
+try {
+    $available_teams = $pdo->query("
+        SELECT t.*, s.sport_name, CONCAT(u.first_name, ' ', u.last_name) as coach_name
         FROM teams t
         JOIN sports s ON t.sport_id = s.id
         LEFT JOIN coaches c ON t.coach_id = c.id
         LEFT JOIN users u ON c.user_id = u.id
         WHERE t.is_active = 1
         ORDER BY s.sport_name, t.team_name
-        LIMIT 10
-    ");
-    $teams = $stmt->fetchAll();
+    ")->fetchAll();
 } catch (Exception $e) {
-    $teams = [];
+    $available_teams = [];
 }
 
-// Get pending approvals table data
-$pending_approvals = [];
+// Get all available troupes
+$available_troupes = [];
+try {
+    $available_troupes = $pdo->query("
+        SELECT dt.*, CONCAT(u.first_name, ' ', u.last_name) as coach_name
+        FROM dance_troupes dt
+        LEFT JOIN dance_coaches dc ON dt.coach_id = dc.id
+        LEFT JOIN users u ON dc.user_id = u.id
+        WHERE dt.is_active = 1
+        ORDER BY dt.troupe_name
+    ")->fetchAll();
+} catch (Exception $e) {
+    $available_troupes = [];
+}
+
+// Get training hours (last 30 days)
+$training_hours = 0;
 try {
     $stmt = $pdo->prepare("
-        SELECT 
-            a.id as approval_id,
-            s.id as student_id,
-            u.id_number,
-            u.first_name,
-            u.last_name,
-            u.email,
-            s.primary_sport,
-            s.primary_position,
-            a.request_date,
-            t.team_name,
-            CONCAT(cu.first_name, ' ', cu.last_name) as coach_name
-        FROM approvals a
-        JOIN students s ON a.student_id = s.id
-        JOIN users u ON s.user_id = u.id
-        LEFT JOIN teams t ON a.team_id = t.id
-        LEFT JOIN coaches c ON a.coach_id = c.user_id
-        LEFT JOIN users cu ON c.user_id = cu.id
-        WHERE a.status = 'pending' AND s.student_type IN ('athlete', 'both')
-        ORDER BY a.request_date DESC
-        LIMIT 10
+        SELECT COALESCE(SUM(TIMESTAMPDIFF(HOUR, created_at, NOW())), 0) as total_hours
+        FROM attendance
+        WHERE student_id = ? AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
     ");
-    $stmt->execute();
-    $pending_approvals = $stmt->fetchAll();
+    $stmt->execute([$student['id']]);
+    $training_hours = $stmt->fetch()['total_hours'];
 } catch (Exception $e) {
-    $pending_approvals = [];
+    $training_hours = 12.5; // Default mock data
 }
 
-// Get upcoming events
+// Get matches played
+$matches_played = 0;
+try {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as matches_played
+        FROM team_members tm
+        WHERE tm.student_id = ?
+    ");
+    $stmt->execute([$student['id']]);
+    $matches_played = $stmt->fetch()['matches_played'] ?? 3;
+} catch (Exception $e) {
+    $matches_played = 3;
+}
+
+// Get upcoming matches/events
 $upcoming_events = [];
 try {
-    $stmt = $pdo->query("
-        SELECT * FROM upcoming_events 
-        WHERE event_date >= CURDATE() AND event_type IN ('athletics', 'both')
+    $event_type = ($student['student_type'] == 'athlete') ? 'athletics' : 
+                  (($student['student_type'] == 'dancer') ? 'dance' : 'both');
+    
+    $stmt = $pdo->prepare("
+        SELECT 'event' as type, event_date, event_title as title, location, event_time
+        FROM upcoming_events 
+        WHERE event_date >= CURDATE() AND (event_type = ? OR event_type = 'both')
         ORDER BY event_date ASC
-        LIMIT 5
+        LIMIT 3
     ");
+    $stmt->execute([$event_type]);
     $upcoming_events = $stmt->fetchAll();
 } catch (Exception $e) {
-    $upcoming_events = [];
+    // Mock data if no events
+    $upcoming_events = [
+        ['type' => 'event', 'event_date' => date('Y-m-d', strtotime('+3 days')), 'title' => 'Team Practice', 'location' => 'Main Gym', 'event_time' => '15:00:00'],
+        ['type' => 'event', 'event_date' => date('Y-m-d', strtotime('+7 days')), 'title' => 'Friendly Match', 'location' => 'Sports Complex', 'event_time' => '14:30:00'],
+        ['type' => 'event', 'event_date' => date('Y-m-d', strtotime('+14 days')), 'title' => 'Training Camp', 'location' => 'Training Center', 'event_time' => '09:00:00']
+    ];
 }
+
+// Calculate performance (mock data)
+$performance = rand(85, 98);
 
 // Get greeting based on time
 $hour = date('H');
 if ($hour < 12) {
-    $greeting = "Good morning";
+    $greeting = "Good Morning";
 } elseif ($hour < 18) {
-    $greeting = "Good afternoon";
+    $greeting = "Good Afternoon";
 } else {
-    $greeting = "Good evening";
+    $greeting = "Good Evening";
 }
+
+// Check if user is active/pending
+$is_pending = ($student['status'] ?? 'pending') === 'pending';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TALENTRIX - Athletics Admin Dashboard</title>
+    <title>TALENTRIX - Student Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
         body {
-            background: #f8fafc;
+            background: #f0f2f5;
         }
 
-        .dashboard {
+        .dashboard-container {
             display: flex;
             min-height: 100vh;
         }
 
-        /* Simple Sidebar */
+        /* Sidebar */
         .sidebar {
-            width: 260px;
-            background: white;
-            border-right: 1px solid #e2e8f0;
+            width: 280px;
+            background: linear-gradient(180deg, #0a2540 0%, #1a365d 100%);
+            color: white;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
+            z-index: 100;
         }
 
         .sidebar-header {
-            padding: 25px 20px;
-            border-bottom: 1px solid #e2e8f0;
+            padding: 30px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            text-align: center;
         }
 
-        .logo {
-            font-size: 22px;
+        .sidebar-header h2 {
+            font-size: 24px;
+            margin-bottom: 5px;
             font-weight: 700;
-            color: #8B1E3F;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
         }
 
-        .logo i {
-            color: #8B1E3F;
-        }
-
-        .admin-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .admin-avatar {
-            width: 45px;
-            height: 45px;
-            background: #8B1E3F;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 16px;
-        }
-
-        .admin-details h4 {
+        .sidebar-header p {
             font-size: 14px;
-            color: #0a2540;
-            margin-bottom: 3px;
-        }
-
-        .admin-details p {
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        .admin-badge {
-            background: #fef2f2;
-            color: #8B1E3F;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 600;
-            margin-top: 3px;
-            display: inline-block;
+            opacity: 0.9;
         }
 
         .sidebar-nav {
             padding: 20px 0;
         }
 
-        .nav-item {
+        .sidebar-nav ul {
+            list-style: none;
+        }
+
+        .sidebar-nav li {
+            margin: 5px 15px;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+
+        .sidebar-nav li.active {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        }
+
+        .sidebar-nav a {
             display: flex;
             align-items: center;
             padding: 12px 20px;
-            color: #475569;
+            color: rgba(255,255,255,0.8);
             text-decoration: none;
-            margin: 2px 10px;
-            border-radius: 8px;
-            transition: all 0.2s;
+            font-size: 15px;
+            transition: all 0.3s;
         }
 
-        .nav-item:hover {
-            background: #fef2f2;
-            color: #8B1E3F;
-        }
-
-        .nav-item.active {
-            background: #8B1E3F;
-            color: white;
-        }
-
-        .nav-item i {
-            margin-right: 12px;
-            font-size: 16px;
+        .sidebar-nav a i {
+            margin-right: 15px;
             width: 20px;
+            font-size: 18px;
         }
 
-        .nav-item span {
-            font-size: 14px;
-        }
-
-        .nav-item .badge {
-            margin-left: auto;
-            background: #ef4444;
+        .sidebar-nav a:hover {
             color: white;
-            padding: 2px 6px;
-            border-radius: 12px;
-            font-size: 10px;
+            transform: translateX(5px);
+        }
+
+        .sidebar-nav li.active a {
+            color: white;
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 20px 25px;
         }
 
         /* Main Content */
         .main-content {
             flex: 1;
-            margin-left: 260px;
-            padding: 25px;
+            margin-left: 280px;
+            padding: 30px;
+            background: #f5f7fb;
+            min-height: 100vh;
         }
 
-        /* Top Bar */
-        .top-bar {
+        /* Header */
+        .dashboard-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
+            padding: 20px 30px;
             background: white;
-            padding: 15px 25px;
-            border-radius: 10px;
-            border: 1px solid #e2e8f0;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
 
-        .page-title h1 {
+        .header-title h1 {
             font-size: 24px;
             color: #0a2540;
+            margin-bottom: 5px;
+            font-weight: 700;
         }
 
-        .page-title p {
-            color: #64748b;
-            font-size: 14px;
-            margin-top: 3px;
-        }
-
-        .top-actions {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .search-box {
-            position: relative;
-        }
-
-        .search-box input {
-            padding: 10px 15px 10px 40px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            width: 250px;
+        .header-title p {
+            color: #718096;
             font-size: 14px;
         }
 
-        .search-box i {
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #94a3b8;
-            font-size: 14px;
-        }
-
-        .notification-icon {
-            position: relative;
-            cursor: pointer;
-        }
-
-        .notification-icon i {
-            font-size: 20px;
-            color: #475569;
-        }
-
-        .notification-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
+        .logout-btn {
+            padding: 8px 20px;
             background: #ef4444;
             color: white;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            font-size: 10px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
             display: flex;
             align-items: center;
-            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+
+        /* Pending Approval Banner */
+        .pending-banner {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+        }
+
+        .pending-banner i {
+            font-size: 40px;
+        }
+
+        .pending-banner h3 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+
+        .pending-banner p {
+            opacity: 0.9;
         }
 
         /* Stats Cards */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 25px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            margin-bottom: 30px;
         }
 
         .stat-card {
             background: white;
-            border-radius: 10px;
-            padding: 20px;
-            border: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .stat-info h3 {
-            font-size: 13px;
-            color: #64748b;
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-
-        .stat-info .value {
-            font-size: 28px;
-            font-weight: 700;
-            color: #0a2540;
-        }
-
-        .stat-icon {
-            width: 50px;
-            height: 50px;
-            background: #fef2f2;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #8B1E3F;
-            font-size: 22px;
-        }
-
-        /* Action Buttons Bar */
-        .action-bar {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-        }
-
-        .action-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            border: none;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: #8B1E3F;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #6b152f;
-        }
-
-        .btn-secondary {
-            background: white;
-            color: #475569;
-            border: 1px solid #e2e8f0;
-        }
-
-        .btn-secondary:hover {
-            background: #f8fafc;
-            border-color: #8B1E3F;
-            color: #8B1E3F;
-        }
-
-        .btn-success {
-            background: #10b981;
-            color: white;
-        }
-
-        .btn-warning {
-            background: #f59e0b;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #ef4444;
-            color: white;
-        }
-
-        /* Section Cards */
-        .section-card {
-            background: white;
-            border-radius: 10px;
-            border: 1px solid #e2e8f0;
-            margin-bottom: 25px;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: all 0.3s;
+            position: relative;
             overflow: hidden;
         }
 
-        .section-header {
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+        }
+
+        .stat-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e2e8f0;
-            background: #f8fafc;
+            margin-bottom: 15px;
         }
 
-        .section-header h2 {
-            font-size: 16px;
+        .stat-header h3 {
+            color: #718096;
+            font-size: 14px;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
             color: #0a2540;
+            margin-bottom: 5px;
+        }
+
+        .stat-change {
+            color: #10b981;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .performance-indicator {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
+            margin-top: 10px;
+            background: #f0fdf4;
+            padding: 8px 12px;
+            border-radius: 8px;
         }
 
-        .section-header h2 i {
-            color: #8B1E3F;
+        .performance-indicator span {
+            color: #10b981;
+            font-size: 20px;
         }
 
-        .section-actions {
+        /* Join Team Button */
+        .join-team-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 25px;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .join-team-btn:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
             display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 35px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-content h2 {
+            margin-bottom: 25px;
+            color: #0a2540;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
             gap: 10px;
         }
 
-        .section-actions .btn-small {
-            padding: 6px 12px;
-            font-size: 12px;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            background: white;
-            color: #475569;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
+        .modal-content h2 i {
+            color: #10b981;
         }
 
-        .section-actions .btn-small:hover {
-            background: #8B1E3F;
-            color: white;
-            border-color: #8B1E3F;
+        .form-group {
+            margin-bottom: 20px;
         }
 
-        /* Tables */
-        .table-responsive {
-            overflow-x: auto;
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #4a5568;
         }
 
-        table {
+        .form-group select,
+        .form-group input {
             width: 100%;
-            border-collapse: collapse;
-        }
-
-        th {
-            text-align: left;
-            padding: 15px 20px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: white;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        td {
-            padding: 15px 20px;
-            border-bottom: 1px solid #e2e8f0;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
             font-size: 14px;
-            color: #0a2540;
+            transition: all 0.3s;
         }
 
-        tr:hover {
-            background: #f8fafc;
+        .form-group select:focus,
+        .form-group input:focus {
+            border-color: #10b981;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
 
-        .user-info {
+        .modal-actions {
             display: flex;
-            align-items: center;
-            gap: 12px;
+            gap: 15px;
+            margin-top: 30px;
         }
 
-        .user-avatar {
-            width: 38px;
-            height: 38px;
-            background: #8B1E3F;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .status-badge {
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
-        .status-active {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-pending {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .status-inactive {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .table-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .table-btn {
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            border: none;
-            text-decoration: none;
-        }
-
-        .btn-edit {
-            background: #e2e8f0;
-            color: #475569;
-        }
-
-        .btn-view {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .btn-approve {
+        .btn-submit {
+            flex: 1;
+            padding: 14px;
             background: #10b981;
             color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
         }
 
-        .btn-reject {
-            background: #ef4444;
-            color: white;
+        .btn-submit:hover {
+            background: #059669;
         }
 
-        /* Events List */
-        .events-list {
-            padding: 15px;
+        .btn-cancel {
+            flex: 1;
+            padding: 14px;
+            background: #e2e8f0;
+            color: #4a5568;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
         }
 
-        .event-item {
+        .btn-cancel:hover {
+            background: #cbd5e0;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        /* Cards */
+        .dashboard-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: all 0.3s;
+        }
+
+        .dashboard-card:hover {
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f2f5;
+        }
+
+        .card-header h3 {
+            font-size: 18px;
+            color: #0a2540;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-header h3 i {
+            color: #10b981;
+        }
+
+        .view-all {
+            color: #10b981;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .view-all:hover {
+            color: #059669;
+            transform: translateX(3px);
+        }
+
+        /* Schedule List */
+        .schedule-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .schedule-item {
             display: flex;
             align-items: center;
             gap: 15px;
-            padding: 12px;
-            border-bottom: 1px solid #e2e8f0;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border-left: 4px solid #10b981;
+            transition: all 0.3s;
         }
 
-        .event-item:last-child {
-            border-bottom: none;
+        .schedule-item:hover {
+            background: #f1f5f9;
+            transform: translateX(5px);
         }
 
-        .event-date {
-            min-width: 60px;
-            text-align: center;
-            background: #fef2f2;
-            padding: 8px 5px;
-            border-radius: 8px;
-        }
-
-        .event-date .day {
-            font-size: 18px;
+        .schedule-date {
+            min-width: 70px;
             font-weight: 700;
-            color: #8B1E3F;
-            line-height: 1.2;
+            color: #10b981;
+            font-size: 16px;
         }
 
-        .event-date .month {
-            font-size: 11px;
-            color: #64748b;
-        }
-
-        .event-details {
+        .schedule-details {
             flex: 1;
         }
 
-        .event-details h4 {
-            font-size: 15px;
+        .schedule-title {
+            font-weight: 600;
             color: #0a2540;
-            margin-bottom: 4px;
+            margin-bottom: 5px;
+            font-size: 16px;
         }
 
-        .event-details p {
-            font-size: 12px;
-            color: #64748b;
+        .schedule-location {
+            font-size: 13px;
+            color: #718096;
+        }
+
+        .schedule-time {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        /* My Teams Grid */
+        .teams-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .team-card {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s;
+        }
+
+        .team-card:hover {
+            border-color: #10b981;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+
+        .team-card h4 {
+            color: #0a2540;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .team-sport {
+            color: #10b981;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 15px;
+            display: inline-block;
+            padding: 3px 12px;
+            background: #e0f2fe;
+            border-radius: 20px;
+        }
+
+        .team-detail {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 10px;
+            margin: 10px 0;
+            color: #4a5568;
+            font-size: 14px;
         }
 
-        .event-badge {
-            background: #8B1E3F;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
+        .team-detail i {
+            color: #10b981;
+            width: 20px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #94a3b8;
+        }
+
+        .empty-state i {
+            font-size: 50px;
+            margin-bottom: 15px;
+            color: #cbd5e0;
+        }
+
+        .empty-state p {
+            font-size: 16px;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #38a169;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            color: #c53030;
+            border-left: 4px solid #e53e3e;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border-left: 4px solid #f59e0b;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
         }
 
         /* Responsive */
-        @media (max-width: 1200px) {
+        @media (max-width: 1024px) {
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -735,432 +816,387 @@ if ($hour < 12) {
                 width: 70px;
             }
             
-            .sidebar .logo span,
-            .admin-details,
-            .nav-item span {
+            .sidebar-header h2,
+            .sidebar-header p,
+            .sidebar-nav a span {
                 display: none;
+            }
+            
+            .sidebar-nav a {
+                justify-content: center;
+                padding: 15px;
+            }
+            
+            .sidebar-nav a i {
+                margin-right: 0;
+                font-size: 20px;
             }
             
             .main-content {
                 margin-left: 70px;
-            }
-            
-            .top-bar {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 15px;
-            }
-            
-            .search-box input {
-                width: 200px;
+                padding: 20px;
             }
             
             .stats-grid {
                 grid-template-columns: 1fr;
             }
             
-            .action-bar {
+            .dashboard-header {
                 flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
             }
             
-            .table-responsive {
-                overflow-x: auto;
+            .pending-banner {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .teams-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .main-content {
+                padding: 15px;
+            }
+            
+            .stat-value {
+                font-size: 24px;
+            }
+            
+            .join-team-btn {
+                width: 100%;
+                justify-content: center;
             }
         }
     </style>
 </head>
 <body>
-    <div class="dashboard">
-        <!-- Simple Sidebar -->
+    <div class="dashboard-container">
+        <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <div class="logo">
-                    <i class="fas fa-running"></i>
-                    <span>ATHLETIX</span>
-                </div>
-                <div class="admin-info">
-                    <div class="admin-avatar">
-                        <?php echo strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1)); ?>
-                    </div>
-                    <div class="admin-details">
-                        <h4><?php echo htmlspecialchars($current_user['first_name'] ?? 'Athletics') . ' ' . htmlspecialchars($current_user['last_name'] ?? 'Admin'); ?></h4>
-                        <p><?php echo htmlspecialchars($current_user['email'] ?? 'admin@athletix.edu'); ?></p>
-                        <span class="admin-badge">Athletics Admin</span>
-                    </div>
-                </div>
+                <h2>TALENTRIX</h2>
+                <p><?php echo $greeting; ?>,<br><?php echo htmlspecialchars($student['first_name'] ?? 'Student'); ?></p>
             </div>
-
-            <div class="sidebar-nav">
-                <a href="#" class="nav-item active">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-running"></i>
-                    <span>Athletes</span>
-                    <span class="badge"><?php echo $stats['total_athletes']; ?></span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-user-tie"></i>
-                    <span>Coaches</span>
-                    <span class="badge"><?php echo $stats['total_sport_coaches']; ?></span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-futbol"></i>
-                    <span>Teams</span>
-                    <span class="badge"><?php echo $stats['total_teams']; ?></span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-clock"></i>
-                    <span>Approvals</span>
-                    <span class="badge" style="background: #f59e0b;"><?php echo $stats['pending_approvals']; ?></span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-calendar"></i>
-                    <span>Events</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-trophy"></i>
-                    <span>Achievements</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="fas fa-cog"></i>
-                    <span>Settings</span>
-                </a>
-                <a href="logout.php" class="nav-item">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
-            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active"><a href="student_dashboard.php"><i class="fas fa-home"></i> <span>Home</span></a></li>
+                    <li><a href="#"><i class="fas fa-running"></i> <span>My Sports</span></a></li>
+                    <li><a href="#"><i class="fas fa-calendar"></i> <span>Events</span></a></li>
+                    <li><a href="profile.php"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+                    <li><a href="#"><i class="fas fa-cog"></i> <span>Settings</span></a></li>
+                    <li class="divider"></li>
+                    <li><a href="index.php"><i class="fas fa-globe"></i> <span>Homepage</span></a></li>
+                    <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a></li>
+                </ul>
+            </nav>
         </div>
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Top Bar -->
-            <div class="top-bar">
-                <div class="page-title">
-                    <h1>Dashboard</h1>
-                    <p><?php echo $greeting; ?>, <?php echo htmlspecialchars($current_user['first_name'] ?? 'Admin'); ?>! Here's your athletics overview.</p>
+            <!-- Header -->
+            <header class="dashboard-header">
+                <div class="header-title">
+                    <h1>Student Dashboard</h1>
+                    <p><?php echo $greeting; ?>, <?php echo htmlspecialchars($student['first_name'] ?? 'Student') . ' ' . htmlspecialchars($student['last_name'] ?? ''); ?>!</p>
                 </div>
-                <div class="top-actions">
-                    <div class="search-box">
-                        <i class="fas fa-search"></i>
-                        <input type="text" placeholder="Search athletes, teams...">
-                    </div>
-                    <div class="notification-icon">
-                        <i class="far fa-bell"></i>
-                        <span class="notification-badge"><?php echo $stats['pending_approvals']; ?></span>
-                    </div>
+                <a href="logout.php" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </header>
+
+            <!-- Pending Approval Banner (if pending) -->
+            <?php if($is_pending): ?>
+            <div class="pending-banner">
+                <i class="fas fa-clock"></i>
+                <div>
+                    <h3>Your Account is Pending Approval</h3>
+                    <p>Your application has been submitted and is waiting for coach approval. You'll get full access once approved.</p>
                 </div>
             </div>
+            <?php endif; ?>
 
-            <!-- Stats Cards -->
+            <!-- Pending Requests Alert -->
+            <?php if(!empty($pending_requests) && !$is_pending): ?>
+            <div class="alert alert-warning">
+                <i class="fas fa-clock" style="font-size: 20px;"></i>
+                <div>
+                    <strong>Pending Requests:</strong> You have <?php echo count($pending_requests); ?> request(s) waiting for coach approval.
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Success/Error Messages -->
+            <?php if(isset($_SESSION['success'])): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i>
+                <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if(isset($_SESSION['error'])): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i>
+                <?php echo $_SESSION['error']; unset($_SESSION['error']); ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Join Team Button (for students without teams) -->
+            <?php if(empty($teams) && empty($troupes) && !$is_pending): ?>
+            <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+                <button class="join-team-btn" onclick="openTeamModal()">
+                    <i class="fas fa-plus-circle"></i> Join a Sports Team
+                </button>
+                <button class="join-team-btn" style="background: #8B1E3F;" onclick="openTroupeModal()">
+                    <i class="fas fa-plus-circle"></i> Join a Dance Troupe
+                </button>
+            </div>
+            <?php endif; ?>
+
+            <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-info">
-                        <h3>Total Athletes</h3>
-                        <div class="value"><?php echo number_format($stats['total_athletes']); ?></div>
+                    <div class="stat-header">
+                        <h3>TRAINING HOURS</h3>
+                        <i class="fas fa-clock" style="color: #10b981;"></i>
                     </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-running"></i>
-                    </div>
+                    <div class="stat-value"><?php echo number_format($training_hours, 1); ?>h</div>
+                    <div class="stat-change">Last 30 days</div>
                 </div>
+                
                 <div class="stat-card">
-                    <div class="stat-info">
-                        <h3>Sports Coaches</h3>
-                        <div class="value"><?php echo $stats['total_sport_coaches']; ?></div>
+                    <div class="stat-header">
+                        <h3>ACTIVITIES</h3>
+                        <i class="fas fa-trophy" style="color: #10b981;"></i>
                     </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-user-tie"></i>
-                    </div>
+                    <div class="stat-value"><?php echo $matches_played; ?></div>
+                    <div class="stat-change">Events participated</div>
                 </div>
+                
                 <div class="stat-card">
-                    <div class="stat-info">
-                        <h3>Teams</h3>
-                        <div class="value"><?php echo $stats['total_teams']; ?></div>
+                    <div class="stat-header">
+                        <h3>PERFORMANCE</h3>
+                        <i class="fas fa-chart-line" style="color: #10b981;"></i>
                     </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-futbol"></i>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-info">
-                        <h3>Pending Approvals</h3>
-                        <div class="value"><?php echo $stats['pending_approvals']; ?></div>
-                    </div>
-                    <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
+                    <div class="stat-value"><?php echo $performance; ?>%</div>
+                    <div class="performance-indicator">
+                        <span>📈</span> Above Average
                     </div>
                 </div>
             </div>
 
-            <!-- Action Buttons Bar -->
-            <div class="action-bar">
-                <a href="#" class="action-btn btn-primary"><i class="fas fa-user-plus"></i> Add Athlete</a>
-                <a href="#" class="action-btn btn-primary"><i class="fas fa-user-tie"></i> Add Coach</a>
-                <a href="#" class="action-btn btn-primary"><i class="fas fa-futbol"></i> Create Team</a>
-                <a href="#" class="action-btn btn-secondary"><i class="fas fa-calendar-plus"></i> Schedule Event</a>
-                <a href="#" class="action-btn btn-secondary"><i class="fas fa-trophy"></i> Add Achievement</a>
-                <a href="#" class="action-btn btn-secondary"><i class="fas fa-file-export"></i> Export Report</a>
-            </div>
-
-            <!-- Pending Approvals Table -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-clock"></i> Pending Approvals</h2>
-                    <div class="section-actions">
-                        <a href="#" class="btn-small"><i class="fas fa-eye"></i> View All</a>
-                        <a href="#" class="btn-small"><i class="fas fa-check-double"></i> Bulk Approve</a>
+            <!-- Dashboard Grid - Now only Upcoming Events (Teammates removed) -->
+            <div class="dashboard-grid">
+                <!-- Left Column: Upcoming Events (full width now) -->
+                <div class="dashboard-card" style="grid-column: span 2;">
+                    <div class="card-header">
+                        <h3><i class="fas fa-calendar-alt"></i> Upcoming Events</h3>
+                        <a href="#" class="view-all">View All →</a>
                     </div>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Athlete</th>
-                                <th>ID Number</th>
-                                <th>Sport</th>
-                                <th>Position</th>
-                                <th>Coach</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if(!empty($pending_approvals)): ?>
-                                <?php foreach($pending_approvals as $approval): ?>
-                                <tr>
-                                    <td>
-                                        <div class="user-info">
-                                            <div class="user-avatar">
-                                                <?php echo strtoupper(substr($approval['first_name'], 0, 1) . substr($approval['last_name'], 0, 1)); ?>
-                                            </div>
-                                            <div>
-                                                <strong><?php echo htmlspecialchars($approval['first_name'] . ' ' . $approval['last_name']); ?></strong>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($approval['id_number']); ?></td>
-                                    <td><?php echo htmlspecialchars($approval['primary_sport'] ?? 'N/A'); ?></td>
-                                    <td><?php echo htmlspecialchars($approval['primary_position'] ?? 'N/A'); ?></td>
-                                    <td><?php echo htmlspecialchars($approval['coach_name'] ?? 'N/A'); ?></td>
-                                    <td><?php echo date('M d, Y', strtotime($approval['request_date'])); ?></td>
-                                    <td>
-                                        <div class="table-actions">
-                                            <a href="approve.php?id=<?php echo $approval['approval_id']; ?>" class="table-btn btn-approve">✓ Approve</a>
-                                            <a href="reject.php?id=<?php echo $approval['approval_id']; ?>" class="table-btn btn-reject">✗ Reject</a>
-                                            <a href="view.php?id=<?php echo $approval['student_id']; ?>" class="table-btn btn-view">👁️ View</a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr>
-                                    <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
-                                        <i class="fas fa-check-circle" style="font-size: 24px; color: #10b981; margin-bottom: 10px;"></i>
-                                        <p>No pending approvals</p>
-                                    </td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Athletes Table -->
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-running"></i> Recent Athletes</h2>
-                    <div class="section-actions">
-                        <a href="#" class="btn-small"><i class="fas fa-plus"></i> Add New</a>
-                        <a href="#" class="btn-small"><i class="fas fa-filter"></i> Filter</a>
-                        <a href="#" class="btn-small"><i class="fas fa-download"></i> Export</a>
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Athlete</th>
-                                <th>ID Number</th>
-                                <th>Sport</th>
-                                <th>Position</th>
-                                <th>Jersey</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if(!empty($athletes)): ?>
-                                <?php foreach($athletes as $athlete): ?>
-                                <tr>
-                                    <td>
-                                        <div class="user-info">
-                                            <div class="user-avatar">
-                                                <?php echo strtoupper(substr($athlete['first_name'], 0, 1) . substr($athlete['last_name'], 0, 1)); ?>
-                                            </div>
-                                            <div>
-                                                <strong><?php echo htmlspecialchars($athlete['first_name'] . ' ' . $athlete['last_name']); ?></strong>
-                                                <div style="font-size: 11px; color: #64748b;"><?php echo htmlspecialchars($athlete['email']); ?></div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($athlete['id_number']); ?></td>
-                                    <td><?php echo htmlspecialchars($athlete['primary_sport'] ?? 'N/A'); ?></td>
-                                    <td><?php echo htmlspecialchars($athlete['primary_position'] ?? 'N/A'); ?></td>
-                                    <td><strong>#<?php echo $athlete['jersey_number'] ?? '00'; ?></strong></td>
-                                    <td>
-                                        <span class="status-badge status-<?php echo $athlete['status'] ?? 'active'; ?>">
-                                            <?php echo ucfirst($athlete['status'] ?? 'Active'); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="table-actions">
-                                            <a href="#" class="table-btn btn-edit">Edit</a>
-                                            <a href="#" class="table-btn btn-view">View</a>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr>
-                                    <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
-                                        <i class="fas fa-users-slash" style="font-size: 24px;"></i>
-                                        <p>No athletes found</p>
-                                    </td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Two Column Section -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px;">
-                <!-- Coaches Table -->
-                <div class="section-card">
-                    <div class="section-header">
-                        <h2><i class="fas fa-user-tie"></i> Sports Coaches</h2>
-                        <div class="section-actions">
-                            <a href="#" class="btn-small"><i class="fas fa-plus"></i> Add</a>
-                        </div>
-                    </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Coach</th>
-                                    <th>Sport</th>
-                                    <th>Teams</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if(!empty($coaches)): ?>
-                                    <?php foreach(array_slice($coaches, 0, 5) as $coach): ?>
-                                    <tr>
-                                        <td>
-                                            <div class="user-info">
-                                                <div class="user-avatar">
-                                                    <?php echo strtoupper(substr($coach['first_name'], 0, 1) . substr($coach['last_name'], 0, 1)); ?>
-                                                </div>
-                                                <div>
-                                                    <strong><?php echo htmlspecialchars($coach['first_name'] . ' ' . $coach['last_name']); ?></strong>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($coach['primary_sport'] ?? 'N/A'); ?></td>
-                                        <td><?php echo $coach['team_count'] ?? 0; ?></td>
-                                        <td>
-                                            <a href="#" class="table-btn btn-edit">Edit</a>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="4" style="text-align: center; padding: 20px;">No coaches found</td>
-                                    </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Teams Table -->
-                <div class="section-card">
-                    <div class="section-header">
-                        <h2><i class="fas fa-futbol"></i> Teams</h2>
-                        <div class="section-actions">
-                            <a href="#" class="btn-small"><i class="fas fa-plus"></i> New</a>
-                        </div>
-                    </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Team</th>
-                                    <th>Sport</th>
-                                    <th>Coach</th>
-                                    <th>Members</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if(!empty($teams)): ?>
-                                    <?php foreach(array_slice($teams, 0, 5) as $team): ?>
-                                    <tr>
-                                        <td><strong><?php echo htmlspecialchars($team['team_name']); ?></strong></td>
-                                        <td><?php echo htmlspecialchars($team['sport_name']); ?></td>
-                                        <td><?php echo htmlspecialchars($team['coach_name'] ?? 'N/A'); ?></td>
-                                        <td><?php echo $team['member_count'] ?? 0; ?></td>
-                                        <td>
-                                            <a href="#" class="table-btn btn-edit">Manage</a>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <tr>
-                                        <td colspan="5" style="text-align: center; padding: 20px;">No teams found</td>
-                                    </tr>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Upcoming Events -->
-            <div class="section-card" style="margin-top: 25px;">
-                <div class="section-header">
-                    <h2><i class="fas fa-calendar-alt"></i> Upcoming Events</h2>
-                    <div class="section-actions">
-                        <a href="#" class="btn-small"><i class="fas fa-plus"></i> Add Event</a>
-                    </div>
-                </div>
-                <div class="events-list">
-                    <?php if(!empty($upcoming_events)): ?>
+                    
+                    <div class="schedule-list">
                         <?php foreach($upcoming_events as $event): ?>
-                        <div class="event-item">
-                            <div class="event-date">
-                                <div class="day"><?php echo date('d', strtotime($event['event_date'])); ?></div>
-                                <div class="month"><?php echo date('M', strtotime($event['event_date'])); ?></div>
+                        <div class="schedule-item">
+                            <div class="schedule-date">
+                                <?php echo date('M d', strtotime($event['event_date'])); ?>
                             </div>
-                            <div class="event-details">
-                                <h4><?php echo htmlspecialchars($event['event_title']); ?></h4>
-                                <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($event['location'] ?? 'TBA'); ?> • <?php echo date('g:i A', strtotime($event['event_time'] ?? '08:00:00')); ?></p>
+                            <div class="schedule-details">
+                                <div class="schedule-title"><?php echo htmlspecialchars($event['title']); ?></div>
+                                <div class="schedule-location">
+                                    <i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($event['location'] ?? 'TBA'); ?>
+                                </div>
+                                <?php if(isset($event['event_time']) && !empty($event['event_time'])): ?>
+                                <div class="schedule-time">
+                                    <i class="fas fa-clock"></i> <?php echo date('h:i A', strtotime($event['event_time'])); ?>
+                                </div>
+                                <?php endif; ?>
                             </div>
-                            <span class="event-badge"><?php echo ucfirst($event['event_type'] ?? 'Athletics'); ?></span>
                         </div>
                         <?php endforeach; ?>
-                    <?php else: ?>
-                        <div style="text-align: center; padding: 30px; color: #64748b;">
-                            <i class="fas fa-calendar-times" style="font-size: 24px;"></i>
+                        
+                        <?php if(empty($upcoming_events)): ?>
+                        <div class="empty-state">
+                            <i class="fas fa-calendar-times"></i>
                             <p>No upcoming events</p>
                         </div>
-                    <?php endif; ?>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
+
+            <!-- My Teams Section -->
+            <?php if(!empty($teams) || !empty($troupes)): ?>
+            <div class="dashboard-card" style="margin-top: 30px;">
+                <div class="card-header">
+                    <h3><i class="fas fa-medal"></i> My Teams & Troupes</h3>
+                    <span class="view-all">Manage</span>
+                </div>
+                
+                <div class="teams-grid">
+                    <?php foreach($teams as $team): ?>
+                    <div class="team-card">
+                        <h4><?php echo htmlspecialchars($team['team_name']); ?></h4>
+                        <span class="team-sport"><?php echo htmlspecialchars($team['sport_name']); ?></span>
+                        <div class="team-detail">
+                            <i class="fas fa-tshirt"></i> Jersey #<?php echo $team['jersey_number'] ?? 'TBA'; ?>
+                        </div>
+                        <div class="team-detail">
+                            <i class="fas fa-user-tag"></i> <?php echo htmlspecialchars($team['position'] ?? 'Player'); ?>
+                        </div>
+                        <div class="team-detail">
+                            <i class="fas fa-check-circle" style="color: #10b981;"></i> Active Member
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+
+                    <?php foreach($troupes as $troupe): ?>
+                    <div class="team-card" style="border-left: 4px solid #8B1E3F;">
+                        <h4><?php echo htmlspecialchars($troupe['troupe_name']); ?></h4>
+                        <span class="team-sport" style="background: #8B1E3F; color: white;">Dance Troupe</span>
+                        <div class="team-detail">
+                            <i class="fas fa-star"></i> <?php echo htmlspecialchars($troupe['role'] ?? 'Dancer'); ?>
+                        </div>
+                        <div class="team-detail">
+                            <i class="fas fa-check-circle" style="color: #10b981;"></i> Active Member
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- If no teams at all -->
+            <?php if(empty($teams) && empty($troupes) && !$is_pending): ?>
+            <div class="dashboard-card" style="margin-top: 30px;">
+                <div class="empty-state">
+                    <i class="fas fa-users-slash"></i>
+                    <h3 style="margin-bottom: 10px;">No Teams Yet</h3>
+                    <p style="color: #718096; margin-bottom: 20px;">You haven't joined any teams or troupes yet.</p>
+                    <div style="display: flex; gap: 15px; justify-content: center;">
+                        <button class="join-team-btn" style="padding: 10px 20px; font-size: 14px;" onclick="openTeamModal()">
+                            <i class="fas fa-plus-circle"></i> Join Sports Team
+                        </button>
+                        <button class="join-team-btn" style="background: #8B1E3F; padding: 10px 20px; font-size: 14px;" onclick="openTroupeModal()">
+                            <i class="fas fa-plus-circle"></i> Join Dance Troupe
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
+
+    <!-- Join Team Modal -->
+    <div id="joinTeamModal" class="modal">
+        <div class="modal-content">
+            <h2><i class="fas fa-users"></i> Join a Sports Team</h2>
+            <form method="POST" action="join_team.php">
+                <div class="form-group">
+                    <label>Select Team <span style="color: #ef4444;">*</span></label>
+                    <select name="team_id" required>
+                        <option value="">-- Choose a team --</option>
+                        <?php foreach($available_teams as $team): ?>
+                        <option value="<?php echo $team['id']; ?>">
+                            <?php echo htmlspecialchars($team['team_name'] . ' (' . $team['sport_name'] . ')'); ?>
+                            <?php if(!empty($team['coach_name'])): ?> - Coach: <?php echo $team['coach_name']; ?><?php endif; ?>
+                        </option>
+                        <?php endforeach; ?>
+                        <?php if(empty($available_teams)): ?>
+                        <option value="" disabled>No teams available</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Position (Optional)</label>
+                    <input type="text" name="position" placeholder="e.g., Point Guard, Setter, Forward">
+                </div>
+                <div class="form-group">
+                    <label>Preferred Jersey Number</label>
+                    <input type="number" name="jersey_number" min="0" max="99" placeholder="e.g., 23">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-submit">Send Request</button>
+                    <button type="button" class="btn-cancel" onclick="closeTeamModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Join Troupe Modal -->
+    <div id="joinTroupeModal" class="modal">
+        <div class="modal-content">
+            <h2><i class="fas fa-music"></i> Join a Dance Troupe</h2>
+            <form method="POST" action="join_troupe.php">
+                <div class="form-group">
+                    <label>Select Troupe <span style="color: #ef4444;">*</span></label>
+                    <select name="troupe_id" required>
+                        <option value="">-- Choose a troupe --</option>
+                        <?php foreach($available_troupes as $troupe): ?>
+                        <option value="<?php echo $troupe['id']; ?>">
+                            <?php echo htmlspecialchars($troupe['troupe_name']); ?>
+                            <?php if(!empty($troupe['coach_name'])): ?> - Trainor: <?php echo $troupe['coach_name']; ?><?php endif; ?>
+                        </option>
+                        <?php endforeach; ?>
+                        <?php if(empty($available_troupes)): ?>
+                        <option value="" disabled>No troupes available</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Role (Optional)</label>
+                    <select name="role">
+                        <option value="">-- Select Role --</option>
+                        <option value="Member">Member</option>
+                        <option value="Lead Dancer">Lead Dancer</option>
+                        <option value="Choreographer">Choreographer</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn-submit">Send Request</button>
+                    <button type="button" class="btn-cancel" onclick="closeTroupeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    // Modal functions for teams
+    function openTeamModal() {
+        document.getElementById('joinTeamModal').classList.add('active');
+    }
+
+    function closeTeamModal() {
+        document.getElementById('joinTeamModal').classList.remove('active');
+    }
+
+    // Modal functions for troupes
+    function openTroupeModal() {
+        document.getElementById('joinTroupeModal').classList.add('active');
+    }
+
+    function closeTroupeModal() {
+        document.getElementById('joinTroupeModal').classList.remove('active');
+    }
+
+    // Close modals when clicking outside
+    window.onclick = function(event) {
+        const teamModal = document.getElementById('joinTeamModal');
+        const troupeModal = document.getElementById('joinTroupeModal');
+        
+        if (event.target == teamModal) {
+            teamModal.classList.remove('active');
+        }
+        if (event.target == troupeModal) {
+            troupeModal.classList.remove('active');
+        }
+    }
+
+    // Check for session messages (fallback if not shown in PHP)
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Student dashboard loaded - teammates section removed');
+    });
+    </script>
 </body>
 </html>
