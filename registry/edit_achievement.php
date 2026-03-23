@@ -1,40 +1,59 @@
 <?php
-// add_achievement.php - Add New Achievement
+// edit_achievement.php - Edit Achievement
 session_start();
 require_once 'db.php';
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || ($_SESSION['user_type'] !== 'admin' && $_SESSION['user_type'] !== 'athletics_admin' && $_SESSION['user_type'] !== 'dance_admin')) {
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit();
 }
 
-// Get students for dropdown
-$students = $pdo->query("SELECT id, first_name, last_name FROM students ORDER BY first_name")->fetchAll();
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+// Get achievement data
+$stmt = $pdo->prepare("SELECT * FROM achievements WHERE id = ?");
+$stmt->execute([$id]);
+$achievement = $stmt->fetch();
+
+if (!$achievement) {
+    header('Location: admin_achievements.php');
+    exit();
+}
 
 $error = '';
-$success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $student_id = $_POST['student_id'] ?? '';
-    $achievement_title = trim($_POST['achievement_title'] ?? '');
-    $achievement_description = trim($_POST['achievement_description'] ?? '');
-    $event_date = $_POST['event_date'] ?? date('Y-m-d');
-    $medal_type = $_POST['medal_type'] ?? 'none';
+    $title = trim($_POST['title'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $team = trim($_POST['team'] ?? '');
+    $category = $_POST['category'] ?? 'athlete';
+    $achievement_date = $_POST['achievement_date'] ?? date('Y-m-d');
     
-    if (empty($student_id)) {
-        $error = 'Please select a student';
-    } elseif (empty($achievement_title)) {
-        $error = 'Achievement title is required';
-    } else {
+    $errors = [];
+    
+    if (empty($title)) {
+        $errors[] = 'Title is required';
+    }
+    
+    if (empty($errors)) {
         try {
-            $stmt = $pdo->prepare("INSERT INTO achievements (student_id, achievement_title, achievement_description, event_date, medal_type, is_verified, verified_by, verified_date) VALUES (?, ?, ?, ?, ?, 1, ?, NOW())");
-            $stmt->execute([$student_id, $achievement_title, $achievement_description, $event_date, $medal_type, $_SESSION['user_id']]);
+            $stmt = $pdo->prepare("
+                UPDATE achievements 
+                SET title = ?, description = ?, team = ?, category = ?, achievement_date = ?
+                WHERE id = ?
+            ");
             
-            $success = 'Achievement added successfully!';
+            $stmt->execute([$title, $description, $team, $category, $achievement_date, $id]);
+            
+            $_SESSION['success_message'] = 'Achievement updated successfully!';
+            header('Location: admin_achievements.php');
+            exit();
         } catch (Exception $e) {
-            $error = 'Error adding achievement: ' . $e->getMessage();
+            $error = 'Error updating achievement: ' . $e->getMessage();
         }
+    } else {
+        $error = implode('<br>', $errors);
     }
 }
 ?>
@@ -43,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TALENTRIX - Add Achievement</title>
+    <title>TALENTRIX - Edit Achievement</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -100,21 +119,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
 
         .alert-error {
             background: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
         }
 
         .form-group {
@@ -125,6 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
+            font-size: 14px;
             color: #495057;
         }
 
@@ -133,17 +144,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #8B1E3F;
         }
 
-        .form-group label .required {
-            color: #dc3545;
-            margin-left: 4px;
-        }
-
         .form-group input,
         .form-group select,
         .form-group textarea {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e9ecef;
+            border: 1px solid #e9ecef;
             border-radius: 8px;
             font-size: 14px;
             transition: all 0.2s;
@@ -152,8 +158,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .form-group input:focus,
         .form-group select:focus,
         .form-group textarea:focus {
-            border-color: #8B1E3F;
             outline: none;
+            border-color: #8B1E3F;
             box-shadow: 0 0 0 3px rgba(139, 30, 63, 0.1);
         }
 
@@ -161,29 +167,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
-        }
-
-        .medal-badge {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .medal-gold {
-            background: #FFD700;
-            color: #000;
-        }
-
-        .medal-silver {
-            background: #C0C0C0;
-            color: #000;
-        }
-
-        .medal-bronze {
-            background: #CD7F32;
-            color: #fff;
         }
 
         .btn-submit {
@@ -196,11 +179,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 600;
             cursor: pointer;
             width: 100%;
+            transition: background 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
-            transition: background 0.2s;
         }
 
         .btn-submit:hover {
@@ -210,13 +193,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .btn-cancel {
             background: #6c757d;
             color: white;
-            text-decoration: none;
+            border: none;
             padding: 12px 25px;
             border-radius: 8px;
             font-size: 14px;
             font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
             display: inline-block;
-            transition: background 0.2s;
         }
 
         .btn-cancel:hover {
@@ -229,6 +213,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 20px;
         }
 
+        .required::after {
+            content: " *";
+            color: #dc3545;
+        }
+
         @media (max-width: 768px) {
             .form-row {
                 grid-template-columns: 1fr;
@@ -239,8 +228,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
     <div class="form-container">
         <div class="header">
-            <h1><i class="fas fa-plus-circle"></i>ADD ACHIEVEMENT</h1>
-            <p>Record a new student achievement</p>
+            <h1><i class="fas fa-edit"></i>EDIT ACHIEVEMENT</h1>
+            <p>Update achievement details</p>
         </div>
 
         <div class="form-content">
@@ -250,59 +239,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
 
-            <?php if ($success): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo $success; ?>
-                    <a href="index.php" style="color: #155724; margin-left: auto; font-weight: 600;">View on Homepage →</a>
-                </div>
-            <?php endif; ?>
-
             <form method="POST" action="">
                 <div class="form-group">
-                    <label><i class="fas fa-user-graduate"></i> Select Student <span class="required">*</span></label>
-                    <select name="student_id" required>
-                        <option value="">-- Choose a student --</option>
-                        <?php foreach ($students as $student): ?>
-                            <option value="<?php echo $student['id']; ?>">
-                                <?php echo htmlspecialchars($student['first_name'] . ' ' . $student['last_name']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label><i class="fas fa-trophy"></i> Achievement Title <span class="required">*</span></label>
-                    <input type="text" name="achievement_title" placeholder="e.g., Basketball Championship 2025" required>
+                    <label class="required"><i class="fas fa-tag"></i> Achievement Title</label>
+                    <input type="text" name="title" value="<?php echo htmlspecialchars($achievement['title']); ?>" required>
                 </div>
 
                 <div class="form-group">
                     <label><i class="fas fa-align-left"></i> Description</label>
-                    <textarea name="achievement_description" rows="4" placeholder="Describe the achievement..."></textarea>
+                    <textarea name="description" rows="4"><?php echo htmlspecialchars($achievement['description']); ?></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-users"></i> Team/Troupe Name</label>
+                    <input type="text" name="team" value="<?php echo htmlspecialchars($achievement['team']); ?>">
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label><i class="fas fa-calendar"></i> Event Date</label>
-                        <input type="date" name="event_date" value="<?php echo date('Y-m-d'); ?>">
+                        <label class="required"><i class="fas fa-calendar"></i> Achievement Date</label>
+                        <input type="date" name="achievement_date" value="<?php echo $achievement['achievement_date']; ?>" required>
                     </div>
 
                     <div class="form-group">
-                        <label><i class="fas fa-medal"></i> Medal Type</label>
-                        <select name="medal_type">
-                            <option value="none">None</option>
-                            <option value="gold">🥇 Gold</option>
-                            <option value="silver">🥈 Silver</option>
-                            <option value="bronze">🥉 Bronze</option>
+                        <label class="required"><i class="fas fa-filter"></i> Category</label>
+                        <select name="category" required>
+                            <option value="athlete" <?php echo $achievement['category'] == 'athlete' ? 'selected' : ''; ?>>🏃 Athlete Achievement</option>
+                            <option value="dance" <?php echo $achievement['category'] == 'dance' ? 'selected' : ''; ?>>💃 Dance Achievement</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="button-group">
                     <button type="submit" class="btn-submit">
-                        <i class="fas fa-save"></i> Save Achievement
+                        <i class="fas fa-save"></i> Update Achievement
                     </button>
-                    <a href="index.php" class="btn-cancel">
-                        <i class="fas fa-home"></i> Back to Homepage
+                    <a href="admin_achievements.php" class="btn-cancel">
+                        <i class="fas fa-times"></i> Cancel
                     </a>
                 </div>
             </form>

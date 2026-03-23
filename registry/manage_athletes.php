@@ -1,5 +1,5 @@
 <?php
-// athletics_admin_dashboard.php - Athletics Admin Dashboard with Modern Sidebar
+// manage_athletes.php - Manage Athletes with Modern Sidebar
 session_start();
 require_once 'db.php';
 
@@ -33,53 +33,94 @@ if ($_SESSION['user_type'] !== 'athletics_admin') {
     }
 }
 
-// Handle delete achievement
-if (isset($_GET['delete_achievement']) && is_numeric($_GET['delete_achievement'])) {
-    $id = $_GET['delete_achievement'];
-    $stmt = $pdo->prepare("DELETE FROM achievements WHERE id = ?");
-    if ($stmt->execute([$id])) {
-        $success = "Achievement deleted successfully!";
-    } else {
-        $error = "Error deleting achievement.";
-    }
-}
-
 // Get current user info
 $user_id = $_SESSION['user_id'];
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $current_user = $stmt->fetch();
 
-// Get athletics statistics
+// Get user initials for avatar
+$user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . substr($current_user['last_name'] ?? 'A', 0, 1));
+
+// Get athletics statistics for sidebar badges
 $total_athletes = $pdo->query("SELECT COUNT(*) FROM students WHERE student_type = 'athlete' OR student_type = 'both'")->fetchColumn();
 $total_sport_coaches = $pdo->query("SELECT COUNT(*) FROM users WHERE user_type = 'sport_coach'")->fetchColumn();
 $total_teams = $pdo->query("SELECT COUNT(*) FROM teams")->fetchColumn();
-$total_pending = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'pending' AND (user_type = 'sport_coach' OR user_type = 'student')")->fetchColumn();
-
-// Get recent users (athletes and coaches)
-$recent_users = $pdo->query("
-    (SELECT u.id, u.id_number, u.first_name, u.last_name, u.email, 'Coach' as type, u.created_at 
-     FROM users u 
-     WHERE u.user_type = 'sport_coach' 
-     ORDER BY u.created_at DESC LIMIT 5)
-    UNION ALL
-    (SELECT u.id, u.id_number, u.first_name, u.last_name, u.email, 'Athlete' as type, u.created_at 
-     FROM users u 
-     JOIN students s ON u.id = s.user_id 
-     WHERE s.student_type IN ('athlete', 'both') 
-     ORDER BY u.created_at DESC LIMIT 5)
-    ORDER BY created_at DESC LIMIT 10
-")->fetchAll();
-
-// Get achievements
-$achievements = $pdo->query("
-    SELECT * FROM achievements 
-    ORDER BY created_at DESC 
-    LIMIT 5
-")->fetchAll();
-
-// Get achievement counts
 $total_achievements = $pdo->query("SELECT COUNT(*) FROM achievements")->fetchColumn();
+
+// Handle athlete deletion
+if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+    $delete_id = $_GET['delete'];
+    
+    // Start transaction
+    $pdo->beginTransaction();
+    
+    try {
+        // Delete from students table first (foreign key)
+        $stmt = $pdo->prepare("DELETE FROM students WHERE user_id = ?");
+        $stmt->execute([$delete_id]);
+        
+        // Delete from users table
+        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ? AND user_type = 'student'");
+        $stmt->execute([$delete_id]);
+        
+        $pdo->commit();
+        $success_message = "Athlete deleted successfully!";
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $error_message = "Error deleting athlete: " . $e->getMessage();
+    }
+}
+
+// Handle search
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// Pagination
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$limit = 10;
+$offset = ($page - 1) * $limit;
+
+// Get athletes count
+if ($search) {
+    $count_sql = "SELECT COUNT(*) FROM users u 
+                  JOIN students s ON u.id = s.user_id 
+                  WHERE s.student_type IN ('athlete', 'both') 
+                  AND (u.id_number LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
+    $search_param = "%$search%";
+    $stmt = $pdo->prepare($count_sql);
+    $stmt->execute([$search_param, $search_param, $search_param, $search_param]);
+    $total_athletes_count = $stmt->fetchColumn();
+} else {
+    $total_athletes_count = $pdo->query("SELECT COUNT(*) FROM students WHERE student_type IN ('athlete', 'both')")->fetchColumn();
+}
+
+$total_pages = ceil($total_athletes_count / $limit);
+
+// Get athletes with pagination
+if ($search) {
+    $sql = "SELECT u.id, u.id_number, u.first_name, u.last_name, u.email, u.status, u.created_at,
+                   s.student_type, s.primary_sport, s.primary_position, s.jersey_number, s.athlete_category, s.year_level
+            FROM users u 
+            JOIN students s ON u.id = s.user_id 
+            WHERE s.student_type IN ('athlete', 'both') 
+            AND (u.id_number LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)
+            ORDER BY u.created_at DESC
+            LIMIT ? OFFSET ?";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$search_param, $search_param, $search_param, $search_param, $limit, $offset]);
+    $athletes = $stmt->fetchAll();
+} else {
+    $sql = "SELECT u.id, u.id_number, u.first_name, u.last_name, u.email, u.status, u.created_at,
+                   s.student_type, s.primary_sport, s.primary_position, s.jersey_number, s.athlete_category, s.year_level
+            FROM users u 
+            JOIN students s ON u.id = s.user_id 
+            WHERE s.student_type IN ('athlete', 'both') 
+            ORDER BY u.created_at DESC
+            LIMIT ? OFFSET ?";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$limit, $offset]);
+    $athletes = $stmt->fetchAll();
+}
 
 // Get greeting
 $hour = date('H');
@@ -90,16 +131,13 @@ if ($hour < 12) {
 } else {
     $greeting = "Good evening";
 }
-
-// Get user initials for avatar
-$user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . substr($current_user['last_name'] ?? 'A', 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATHLETIX - Athletics Admin</title>
+    <title>ATHLETIX - Manage Athletes</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -130,7 +168,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             z-index: 100;
         }
 
-        /* Hide scrollbar but keep functionality */
         .sidebar::-webkit-scrollbar {
             width: 5px;
         }
@@ -232,7 +269,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             overflow: hidden;
         }
 
-        /* Button hover effect */
         .sidebar-nav a::before {
             content: '';
             position: absolute;
@@ -256,7 +292,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             transition: all 0.3s ease;
         }
 
-        /* Button hover state */
         .sidebar-nav a:hover {
             background: rgba(139, 30, 63, 0.15);
             color: #8B1E3F;
@@ -269,7 +304,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             transform: scale(1.1);
         }
 
-        /* Active button state */
         .sidebar-nav li.active a {
             background: #8B1E3F;
             color: white;
@@ -285,7 +319,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             display: none;
         }
 
-        /* Badge for counts */
         .badge {
             margin-left: auto;
             background: rgba(255,255,255,0.1);
@@ -307,7 +340,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             color: white;
         }
 
-        /* Logout button special style */
         .logout-section {
             margin-top: 20px;
             border-top: 1px solid rgba(255,255,255,0.1);
@@ -450,92 +482,85 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             border: 1px solid #f5c6cb;
         }
 
-        /* Stats Row */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 25px;
-            margin-bottom: 40px;
-        }
-
-        .stat-card {
+        /* Search Bar */
+        .search-bar {
             background: white;
-            border-radius: 15px;
-            padding: 25px;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
             border: 1px solid #e9ecef;
-            border-left: 5px solid #8B1E3F;
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        }
-
-        .stat-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .stat-header i {
-            font-size: 20px;
-            color: #8B1E3F;
-        }
-
-        .stat-header h3 {
-            font-size: 14px;
-            font-weight: 600;
-            color: #6c757d;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .stat-number {
-            font-size: 42px;
-            font-weight: 700;
-            color: #0a2540;
-            margin-bottom: 8px;
-        }
-
-        .stat-percent {
-            color: #6c757d;
-            font-size: 14px;
-        }
-
-        /* Section Title */
-        .section-title {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 40px 0 20px;
-        }
-
-        .section-title h2 {
-            font-size: 22px;
-            color: #0a2540;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .section-title h2 i {
-            color: #8B1E3F;
-        }
-
-        .section-actions {
             display: flex;
             gap: 15px;
+            flex-wrap: wrap;
         }
 
-        /* Recent Users Card */
-        .recent-users-card {
+        .search-input {
+            flex: 1;
+            min-width: 250px;
+            position: relative;
+        }
+
+        .search-input i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+        }
+
+        .search-input input {
+            width: 100%;
+            padding: 12px 15px 12px 45px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .filter-select {
+            padding: 12px 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+
+        .btn-search {
+            background: #8B1E3F;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-search:hover {
+            background: #6b152f;
+        }
+
+        .btn-reset {
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #e9ecef;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .btn-reset:hover {
+            background: #e9ecef;
+        }
+
+        /* Athletes Table */
+        .athletes-card {
             background: white;
             border-radius: 15px;
             border: 1px solid #e9ecef;
             overflow: hidden;
-            margin-bottom: 30px;
         }
 
         .card-header {
@@ -547,7 +572,7 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             background: #f8f9fa;
         }
 
-        .card-header h2, .card-header h3 {
+        .card-header h2 {
             font-size: 18px;
             color: #0a2540;
             font-weight: 600;
@@ -559,13 +584,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             border-radius: 20px;
             font-size: 13px;
             color: #6c757d;
-        }
-
-        .view-all {
-            color: #8B1E3F;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 600;
         }
 
         table {
@@ -591,18 +609,27 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             font-size: 14px;
         }
 
-        .badge-athlete {
-            background: #8B1E3F;
-            color: white;
+        .badge-active {
+            background: #d4edda;
+            color: #155724;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
         }
 
-        .badge-coach {
-            background: #10b981;
-            color: white;
+        .badge-pending {
+            background: #fff3cd;
+            color: #856404;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-suspended {
+            background: #f8d7da;
+            color: #721c24;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 12px;
@@ -662,116 +689,46 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
             color: white;
         }
 
-        /* Table Card */
-        .table-card {
-            background: white;
-            border-radius: 15px;
-            border: 1px solid #e9ecef;
-            overflow: hidden;
-            margin-bottom: 30px;
-        }
-
-        /* Distribution Card */
-        .distribution-card {
-            background: white;
-            border-radius: 15px;
-            border: 1px solid #e9ecef;
-            padding: 25px;
-            margin-bottom: 30px;
-        }
-
-        .distribution-card h2 {
-            font-size: 18px;
-            color: #0a2540;
-            margin-bottom: 20px;
-            font-weight: 600;
-        }
-
-        .distribution-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 15px;
-            padding: 10px 0;
-        }
-
-        .distribution-label {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #495057;
-            font-weight: 500;
-        }
-
-        .distribution-label i {
-            width: 20px;
-            color: #8B1E3F;
-        }
-
-        .distribution-value {
-            font-weight: 600;
-            color: #0a2540;
-        }
-
-        .distribution-percent {
-            color: #6c757d;
-            font-size: 13px;
-            margin-left: 10px;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 8px;
+        .sport-badge {
             background: #e9ecef;
+            color: #495057;
+            padding: 3px 8px;
             border-radius: 4px;
-            margin: 5px 0 15px 0;
-            overflow: hidden;
+            font-size: 11px;
         }
 
-        .progress-fill {
-            height: 100%;
-            background: #8B1E3F;
-            border-radius: 4px;
-        }
-
-        /* Bottom Stats */
-        .stats-bottom {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 30px;
-            margin-top: 20px;
-        }
-
-        .stat-box {
-            background: white;
-            border-radius: 12px;
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
             padding: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .pagination a {
+            padding: 8px 15px;
             border: 1px solid #e9ecef;
-            border-left: 3px solid #8B1E3F;
+            border-radius: 6px;
+            color: #495057;
+            text-decoration: none;
+            font-size: 14px;
         }
 
-        .stat-box-label {
-            color: #6c757d;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
+        .pagination a:hover {
+            background: #f8f9fa;
         }
 
-        .stat-box-value {
-            font-size: 28px;
-            font-weight: 700;
-            color: #0a2540;
+        .pagination a.active {
+            background: #8B1E3F;
+            color: white;
+            border-color: #8B1E3F;
         }
 
-        /* Responsive */
         @media (max-width: 1200px) {
-            .stats-row {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            
-            .stats-bottom {
-                grid-template-columns: repeat(2, 1fr);
+            table {
+                display: block;
+                overflow-x: auto;
             }
         }
 
@@ -812,26 +769,20 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
                 margin-left: 80px;
             }
             
-            .stats-row {
-                grid-template-columns: 1fr;
+            .search-bar {
+                flex-direction: column;
             }
             
-            .stats-bottom {
-                grid-template-columns: 1fr;
-            }
-            
-            table {
-                display: block;
-                overflow-x: auto;
+            .filter-select {
+                width: 100%;
             }
         }
     </style>
 </head>
 <body>
     <div class="dashboard-container">
-        <!-- MODERN SIDEBAR FOR ATHLETICS ADMIN -->
+        <!-- MODERN SIDEBAR (SAME AS DASHBOARD) -->
         <div class="sidebar">
-            <!-- User Profile Section -->
             <div class="user-profile">
                 <div class="user-avatar-large">
                     <span><?php echo $user_initials; ?></span>
@@ -841,11 +792,10 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
                 <div class="user-email"><?php echo htmlspecialchars($current_user['email'] ?? 'athletics@talentrix.edu'); ?></div>
             </div>
 
-            <!-- MAIN MENU SECTION -->
             <div class="nav-section">MAIN</div>
             <nav class="sidebar-nav">
                 <ul>
-                    <li class="active">
+                    <li>
                         <a href="athletics_admin_dashboard.php">
                             <i class="fas fa-chart-pie"></i>
                             <span>Dashboard</span>
@@ -854,11 +804,10 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
                 </ul>
             </nav>
 
-            <!-- MANAGEMENT SECTION -->
             <div class="nav-section">MANAGEMENT</div>
             <nav class="sidebar-nav">
                 <ul>
-                    <li>
+                    <li class="active">
                         <a href="manage_athletes.php">
                             <i class="fas fa-running"></i>
                             <span>Manage Athletes</span>
@@ -882,7 +831,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
                 </ul>
             </nav>
 
-            <!-- CONTENT SECTION -->
             <div class="nav-section">CONTENT</div>
             <nav class="sidebar-nav">
                 <ul>
@@ -908,7 +856,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
                 </ul>
             </nav>
 
-            <!-- REPORTS SECTION -->
             <div class="nav-section">REPORTS</div>
             <nav class="sidebar-nav">
                 <ul>
@@ -921,7 +868,6 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
                 </ul>
             </nav>
 
-            <!-- LOGOUT BUTTON -->
             <div class="logout-section">
                 <nav class="sidebar-nav">
                     <ul>
@@ -940,173 +886,146 @@ $user_initials = strtoupper(substr($current_user['first_name'] ?? 'A', 0, 1) . s
         <div class="main-content">
             <div class="header">
                 <div>
-                    <h1>DASHBOARD</h1>
-                    <p><?php echo $greeting; ?>, <?php echo htmlspecialchars($current_user['first_name'] ?? 'Admin'); ?>! Here's your athletics overview.</p>
+                    <h1>MANAGE ATHLETES</h1>
+                    <p><?php echo $greeting; ?>, <?php echo htmlspecialchars($current_user['first_name'] ?? 'Admin'); ?>! Manage all athletes in the system.</p>
                 </div>
                 <div class="header-right">
                     <div class="date-badge"><i class="far fa-calendar-alt"></i> <?php echo date('F d, Y'); ?></div>
-                    <a href="add_achievement.php" class="btn-add"><i class="fas fa-plus"></i> Add Achievement</a>
-                    <a href="reports.php" class="btn-manage"><i class="fas fa-chart-bar"></i> Reports</a>
+                    <a href="add_athlete.php" class="btn-add"><i class="fas fa-plus"></i> Add Athlete</a>
                 </div>
             </div>
 
-            <?php if (isset($success)): ?>
+            <?php if (isset($success_message)): ?>
             <div class="alert alert-success" id="successAlert">
-                <span><i class="fas fa-check-circle"></i> <?php echo $success; ?></span>
+                <span><i class="fas fa-check-circle"></i> <?php echo $success_message; ?></span>
                 <span class="close-alert" onclick="this.parentElement.style.display='none'">&times;</span>
             </div>
             <?php endif; ?>
 
-            <?php if (isset($error)): ?>
+            <?php if (isset($error_message)): ?>
             <div class="alert alert-error" id="errorAlert">
-                <span><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></span>
+                <span><i class="fas fa-exclamation-circle"></i> <?php echo $error_message; ?></span>
                 <span class="close-alert" onclick="this.parentElement.style.display='none'">&times;</span>
             </div>
             <?php endif; ?>
 
-            <!-- Stats Row -->
-            <div class="stats-row">
-                <div class="stat-card">
-                    <div class="stat-header"><i class="fas fa-running"></i><h3>ATHLETES</h3></div>
-                    <div class="stat-number"><?php echo $total_athletes; ?></div>
-                    <div class="stat-percent">Total registered athletes</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header"><i class="fas fa-user-tie"></i><h3>COACHES</h3></div>
-                    <div class="stat-number"><?php echo $total_sport_coaches; ?></div>
-                    <div class="stat-percent">Active coaches</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header"><i class="fas fa-futbol"></i><h3>TEAMS</h3></div>
-                    <div class="stat-number"><?php echo $total_teams; ?></div>
-                    <div class="stat-percent">Active teams</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header"><i class="fas fa-trophy"></i><h3>ACHIEVEMENTS</h3></div>
-                    <div class="stat-number"><?php echo $total_achievements; ?></div>
-                    <div class="stat-percent">Total records</div>
-                </div>
+            <!-- Search Bar -->
+            <div class="search-bar">
+                <form method="GET" style="display: flex; gap: 15px; width: 100%; flex-wrap: wrap;">
+                    <div class="search-input">
+                        <i class="fas fa-search"></i>
+                        <input type="text" name="search" placeholder="Search by ID, name, or email..." value="<?php echo htmlspecialchars($search); ?>">
+                    </div>
+                    <select name="sport" class="filter-select">
+                        <option value="">All Sports</option>
+                    </select>
+                    <select name="status" class="filter-select">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="pending">Pending</option>
+                        <option value="suspended">Suspended</option>
+                    </select>
+                    <button type="submit" class="btn-search"><i class="fas fa-filter"></i> Apply Filters</button>
+                    <a href="manage_athletes.php" class="btn-reset"><i class="fas fa-undo"></i> Reset</a>
+                </form>
             </div>
 
-            <!-- Recent Users -->
-            <div class="recent-users-card">
+            <!-- Athletes Table -->
+            <div class="athletes-card">
                 <div class="card-header">
-                    <h2>RECENT ATHLETICS USERS</h2>
-                    <a href="manage_athletes.php" class="view-all">View All <i class="fas fa-arrow-right"></i></a>
+                    <h2>ATHLETES LIST</h2>
+                    <span>Total: <?php echo $total_athletes_count; ?> athletes</span>
                 </div>
                 <table>
                     <thead>
                         <tr>
                             <th>ID NUMBER</th>
-                            <th>NAME</th>
+                            <th>FULL NAME</th>
                             <th>EMAIL</th>
-                            <th>TYPE</th>
-                            <th>DATE JOINED</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if(!empty($recent_users)): ?>
-                            <?php foreach($recent_users as $user): ?>
-                            <tr>
-                                <td><strong><?php echo htmlspecialchars($user['id_number'] ?? 'N/A'); ?></strong></td>
-                                <td><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></td>
-                                <td><?php echo htmlspecialchars($user['email']); ?></td>
-                                <td><span class="badge-<?php echo strtolower($user['type']); ?>"><?php echo $user['type']; ?></span></td>
-                                <td><?php echo date('M d, Y', strtotime($user['created_at'])); ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td>ATH-001</td>
-                                <td>John Athlete</td>
-                                <td>john@athlete.edu</td>
-                                <td><span class="badge-athlete">Athlete</span></td>
-                                <td><?php echo date('M d, Y'); ?></td>
-                            </tr>
-                            <tr>
-                                <td>COA-001</td>
-                                <td>Coach Smith</td>
-                                <td>coach@athlete.edu</td>
-                                <td><span class="badge-coach">Coach</span></td>
-                                <td><?php echo date('M d, Y', strtotime('-5 days')); ?></td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- LATEST ACHIEVEMENTS TABLE -->
-            <div class="section-title">
-                <h2><i class="fas fa-trophy"></i> Latest Achievements</h2>
-                <div class="section-actions">
-                    <a href="add_achievement.php" class="btn-add"><i class="fas fa-plus"></i> Add New</a>
-                    <a href="achievements.php" class="btn-manage"><i class="fas fa-edit"></i> Manage All</a>
-                </div>
-            </div>
-
-            <div class="table-card">
-                <div class="card-header">
-                    <h3>RECENT ACHIEVEMENTS</h3>
-                    <span>Last 5 entries</span>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>TITLE</th>
-                            <th>TEAM</th>
-                            <th>DATE</th>
+                            <th>SPORT</th>
+                            <th>POSITION</th>
+                            <th>JERSEY</th>
+                            <th>STATUS</th>
                             <th>ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (!empty($achievements)): ?>
-                            <?php foreach ($achievements as $ach): ?>
+                        <?php if (!empty($athletes)): ?>
+                            <?php foreach ($athletes as $athlete): ?>
                             <tr>
-                                <td><strong><?php echo htmlspecialchars(substr($ach['title'] ?? '', 0, 30)); ?></strong></td>
-                                <td><?php echo htmlspecialchars($ach['team'] ?? 'N/A'); ?></td>
-                                <td><?php echo date('M d, Y', strtotime($ach['created_at'])); ?></td>
+                                <td><strong><?php echo htmlspecialchars($athlete['id_number'] ?? 'N/A'); ?></strong></td>
+                                <td><?php echo htmlspecialchars($athlete['first_name'] . ' ' . $athlete['last_name']); ?></td>
+                                <td><?php echo htmlspecialchars($athlete['email']); ?></td>
+                                <td>
+                                    <?php if ($athlete['primary_sport']): ?>
+                                        <span class="sport-badge"><?php echo htmlspecialchars($athlete['primary_sport']); ?></span>
+                                    <?php else: ?>
+                                        <span class="sport-badge">Not assigned</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo htmlspecialchars($athlete['primary_position'] ?? 'N/A'); ?></td>
+                                <td><strong>#<?php echo $athlete['jersey_number'] ?? '00'; ?></strong></td>
+                                <td>
+                                    <?php
+                                    $status_class = '';
+                                    switch ($athlete['status']) {
+                                        case 'active':
+                                            $status_class = 'badge-active';
+                                            break;
+                                        case 'pending':
+                                            $status_class = 'badge-pending';
+                                            break;
+                                        case 'suspended':
+                                            $status_class = 'badge-suspended';
+                                            break;
+                                        default:
+                                            $status_class = 'badge-pending';
+                                    }
+                                    ?>
+                                    <span class="<?php echo $status_class; ?>"><?php echo ucfirst($athlete['status'] ?? 'Pending'); ?></span>
+                                </td>
                                 <td>
                                     <div class="action-buttons">
-                                        <a href="edit_achievement.php?id=<?php echo $ach['id']; ?>" class="btn-edit"><i class="fas fa-edit"></i> Edit</a>
-                                        <a href="?delete_achievement=<?php echo $ach['id']; ?>" class="btn-delete" onclick="return confirm('Delete this achievement?')"><i class="fas fa-trash"></i> Delete</a>
-                                        <a href="view_achievement.php?id=<?php echo $ach['id']; ?>" class="btn-view"><i class="fas fa-eye"></i> View</a>
+                                        <a href="view_athlete.php?id=<?php echo $athlete['id']; ?>" class="btn-view"><i class="fas fa-eye"></i> View</a>
+                                        <a href="edit_athlete.php?id=<?php echo $athlete['id']; ?>" class="btn-edit"><i class="fas fa-edit"></i> Edit</a>
+                                        <a href="?delete=<?php echo $athlete['id']; ?>" class="btn-delete" onclick="return confirm('Are you sure you want to delete this athlete?')"><i class="fas fa-trash"></i> Delete</a>
                                     </div>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="4" style="text-align: center; padding: 30px;">
-                                    <i class="fas fa-trophy" style="font-size: 40px; color: #6c757d;"></i>
-                                    <p style="margin-top: 10px; color: #6c757d;">No achievements yet. Click "Add New" to create one.</p>
+                                <td colspan="8" style="text-align: center; padding: 40px;">
+                                    <i class="fas fa-users" style="font-size: 48px; color: #6c757d; margin-bottom: 15px; display: block;"></i>
+                                    <h3 style="color: #6c757d; margin-bottom: 10px;">No Athletes Found</h3>
+                                    <p style="color: #6c757d;">Click the "Add Athlete" button to add a new athlete.</p>
                                 </td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
-            </div>
 
-            <!-- User Distribution -->
-            <div class="distribution-card">
-                <h2>USER DISTRIBUTION</h2>
-                
-                <div class="distribution-item">
-                    <span class="distribution-label"><i class="fas fa-running"></i> ATHLETES</span>
-                    <span><span class="distribution-value"><?php echo $total_athletes; ?></span> <span class="distribution-percent">(<?php echo $total_athletes + $total_sport_coaches > 0 ? round(($total_athletes / ($total_athletes + $total_sport_coaches)) * 100, 1) : 0; ?>%)</span></span>
+                <!-- Pagination -->
+                <?php if ($total_pages > 1): ?>
+                <div class="pagination">
+                    <?php if ($page > 1): ?>
+                        <a href="?page=<?php echo $page-1; ?>&search=<?php echo urlencode($search); ?>">&laquo; Previous</a>
+                    <?php endif; ?>
+                    
+                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                        <a href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>" class="<?php echo $i == $page ? 'active' : ''; ?>"><?php echo $i; ?></a>
+                    <?php endfor; ?>
+                    
+                    <?php if ($page < $total_pages): ?>
+                        <a href="?page=<?php echo $page+1; ?>&search=<?php echo urlencode($search); ?>">Next &raquo;</a>
+                    <?php endif; ?>
                 </div>
-                <div class="progress-bar"><div class="progress-fill" style="width: <?php echo $total_athletes + $total_sport_coaches > 0 ? round(($total_athletes / ($total_athletes + $total_sport_coaches)) * 100, 1) : 0; ?>%;"></div></div>
-                
-                <div class="distribution-item">
-                    <span class="distribution-label"><i class="fas fa-user-tie"></i> COACHES</span>
-                    <span><span class="distribution-value"><?php echo $total_sport_coaches; ?></span> <span class="distribution-percent">(<?php echo $total_athletes + $total_sport_coaches > 0 ? round(($total_sport_coaches / ($total_athletes + $total_sport_coaches)) * 100, 1) : 0; ?>%)</span></span>
-                </div>
-                <div class="progress-bar"><div class="progress-fill" style="width: <?php echo $total_athletes + $total_sport_coaches > 0 ? round(($total_sport_coaches / ($total_athletes + $total_sport_coaches)) * 100, 1) : 0; ?>%; background: #10b981;"></div></div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
 
     <script>
-        // Auto-hide alerts after 5 seconds
         setTimeout(function() {
             var successAlert = document.getElementById('successAlert');
             var errorAlert = document.getElementById('errorAlert');

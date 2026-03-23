@@ -1,7 +1,8 @@
 <?php
-// db.php - Database connection WITHOUT auto-creation of default users
+// db.php - Database connection with automatic table creation
+
 $host = '127.0.0.1';
-$db   = 'talentrix_db';
+$db   = 'talentrix';  // Changed to match your database name
 $user = 'root';
 $pass = '';
 $charset = 'utf8mb4';
@@ -287,12 +288,54 @@ try {
                 }
             }
         } catch (Exception $e) {
+            // Silently ignore errors
         }
         
+    }
+    
+    // Ensure teams table has stats columns
+    try {
+        $columns = $pdo->query("SHOW COLUMNS FROM teams")->fetchAll(PDO::FETCH_COLUMN);
+
+        if (!in_array('matches', $columns)) {
+            $pdo->exec("ALTER TABLE teams ADD COLUMN matches INT DEFAULT 0");
+        }
+
+        if (!in_array('wins', $columns)) {
+            $pdo->exec("ALTER TABLE teams ADD COLUMN wins INT DEFAULT 0");
+        }
+
+        if (!in_array('losses', $columns)) {
+            $pdo->exec("ALTER TABLE teams ADD COLUMN losses INT DEFAULT 0");
+        }
+
+        if (!in_array('logo', $columns)) {
+            $pdo->exec("ALTER TABLE teams ADD COLUMN logo VARCHAR(255)");
+        }
+
+    } catch (Exception $e) {
+        // Silently ignore errors
     }
     
 } catch (PDOException $e) {
     // Only show error if it's a critical database connection issue
     die("Database Connection Failed: " . $e->getMessage());
 }
+
+// For backward compatibility with code that expects mysqli connection
+// You can use this function to get a mysqli connection if needed
+function getMysqliConnection() {
+    global $host, $user, $pass, $db;
+    $conn = mysqli_connect($host, $user, $pass, $db);
+    if (!$conn) {
+        die("Connection Failed: " . mysqli_connect_error());
+    }
+    return $conn;
+}
+
+// You can also define a global mysqli connection for legacy code
+$conn = getMysqliConnection();
+
+// Make PDO connection available globally
+global $pdo;
 ?>

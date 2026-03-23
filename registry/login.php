@@ -456,17 +456,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </button>
         </form>
         
-        <div class="demo-credentials">
-            <h4><i class="fas fa-info-circle"></i> Demo Credentials:</h4>
-            <ul>
-                <li><strong>Admin:</strong> admin / admin123</li>
-                <li><strong>Athletics Admin:</strong> athletics_admin / password</li>
-                <li><strong>Dance Admin:</strong> dance_admin / password</li>
-                <li><strong>Sports Coach:</strong> sport_coach / password</li>
-                <li><strong>Dance Trainer:</strong> dance_coach / password</li>
-                <li><strong>Student:</strong> student / password</li>
-            </ul>
-        </div>
+        
         
         <div class="links">
             <p>New to TALENTRIX? <a href="register.php">
