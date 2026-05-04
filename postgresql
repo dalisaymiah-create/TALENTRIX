@@ -1,0 +1,602 @@
+-- Create the database
+CREATE DATABASE Bisu_Registry_Achievement_Tracker;
+
+-- Connect to the database
+\c Bisu_Registry_Achievement_Tracker;
+
+-- Table: User
+CREATE TABLE "User" (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    usertype VARCHAR(50) NOT NULL,
+    admin_type VARCHAR(50),
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100)
+);
+
+-- Table: College
+CREATE TABLE college (
+    id SERIAL PRIMARY KEY,
+    college_code VARCHAR(20) NOT NULL UNIQUE,
+    college_name VARCHAR(200) NOT NULL,
+    description TEXT
+);
+
+-- Table: Course
+CREATE TABLE course (
+    id SERIAL PRIMARY KEY,
+    course_code VARCHAR(20) NOT NULL UNIQUE,
+    course_name VARCHAR(200) NOT NULL,
+    college_id INT NOT NULL,
+    FOREIGN KEY (college_id) REFERENCES college(id) ON DELETE CASCADE
+);
+
+-- Table: category
+CREATE TABLE category (
+    id SERIAL PRIMARY KEY,
+    category_name VARCHAR(100) NOT NULL,
+    category_type VARCHAR(50) NOT NULL
+);
+
+-- Table: activity
+CREATE TABLE activity (
+    id SERIAL PRIMARY KEY,
+    activity_name VARCHAR(200) NOT NULL,
+    activity_type VARCHAR(100) NOT NULL,
+    competition_level VARCHAR(50) DEFAULT 'Intramurals',
+    school_year VARCHAR(20),
+    CHECK (competition_level IN ('Intramurals', 'Provincial', 'Regional', 'National', 'International'))
+);
+
+-- Table: coach
+CREATE TABLE coach (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES "User"(id) ON DELETE CASCADE
+);
+
+-- Table: announcement
+CREATE TABLE announcement (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    content TEXT,
+    announcement_type VARCHAR(50) NOT NULL,
+    author_id INT NOT NULL,
+    is_published BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    image_path TEXT,
+    admin_type VARCHAR(50) DEFAULT NULL,
+    school_year VARCHAR(20),
+    FOREIGN KEY (author_id) REFERENCES "User"(id) ON DELETE CASCADE,
+    CHECK (admin_type IN ('sports', 'cultural', NULL))
+);
+
+-- Table: contest
+CREATE TABLE contest (
+    id SERIAL PRIMARY KEY,
+    activity_id INT NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    tournament_manager VARCHAR(200),
+    category_id INT NOT NULL,
+    contest_status VARCHAR(50) DEFAULT 'active',
+    FOREIGN KEY (activity_id) REFERENCES activity(id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES category(id) ON DELETE CASCADE
+);
+
+-- Table: team
+CREATE TABLE team (
+    id SERIAL PRIMARY KEY,
+    team_name VARCHAR(200) NOT NULL,
+    coach_id INT NOT NULL,
+    contest_id INT NOT NULL,
+    FOREIGN KEY (coach_id) REFERENCES coach(id) ON DELETE CASCADE,
+    FOREIGN KEY (contest_id) REFERENCES contest(id) ON DELETE CASCADE
+);
+
+-- Table: student
+CREATE TABLE student (
+    id SERIAL PRIMARY KEY,
+    yr_level INT NOT NULL,
+    user_id INT NOT NULL,
+    course_id INT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES "User"(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES course(id) ON DELETE CASCADE,
+    CHECK (yr_level BETWEEN 1 AND 5)
+);
+
+-- Table: participation
+CREATE TABLE participation (
+    id SERIAL PRIMARY KEY,
+    student_id INT NOT NULL,
+    ranking VARCHAR(50),
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    team_id INT NOT NULL,
+    membership_status VARCHAR(50) DEFAULT 'active',
+    FOREIGN KEY (student_id) REFERENCES student(id) ON DELETE CASCADE,
+    FOREIGN KEY (team_id) REFERENCES team(id) ON DELETE CASCADE
+);
+
+-- Create indexes for better performance
+CREATE INDEX idx_user_email ON "User"(email);
+CREATE INDEX idx_user_name ON "User"(first_name, last_name);
+CREATE INDEX idx_coach_user_id ON coach(user_id);
+CREATE INDEX idx_announcement_author_id ON announcement(author_id);
+CREATE INDEX idx_announcement_admin_type ON announcement(admin_type);
+CREATE INDEX idx_announcement_school_year ON announcement(school_year);
+CREATE INDEX idx_contest_activity_id ON contest(activity_id);
+CREATE INDEX idx_contest_category_id ON contest(category_id);
+CREATE INDEX idx_team_coach_id ON team(coach_id);
+CREATE INDEX idx_team_contest_id ON team(contest_id);
+CREATE INDEX idx_student_user_id ON student(user_id);
+CREATE INDEX idx_student_course_id ON student(course_id);
+CREATE INDEX idx_participation_student_id ON participation(student_id);
+CREATE INDEX idx_participation_team_id ON participation(team_id);
+CREATE INDEX idx_participation_student_status ON participation(student_id, membership_status);
+CREATE INDEX idx_participation_team_status ON participation(team_id, membership_status);
+CREATE INDEX idx_activity_school_year ON activity(school_year);
+CREATE INDEX idx_competition_level ON activity(competition_level);
+
+-- =====================================================
+-- INSERT COLLEGES
+-- =====================================================
+
+INSERT INTO college (college_code, college_name, description) VALUES
+('COS', 'College of Science', 'Offers programs in Computer Science and Environmental Science'),
+('CBM', 'College of Business Management', 'Offers programs in Hospitality Management and Office Administration'),
+('CFMS', 'College of Fisheries and Marine Sciences', 'Offers programs in Fisheries and Marine Biology'),
+('CTE', 'College of Teacher Education', 'Offers programs in Elementary and Secondary Education');
+
+-- =====================================================
+-- INSERT COURSES
+-- =====================================================
+
+-- COS Courses
+INSERT INTO course (course_code, course_name, college_id) VALUES
+('BSCS', 'Bachelor of Science in Computer Science', (SELECT id FROM college WHERE college_code = 'COS')),
+('BSES', 'Bachelor of Science in Environmental Science', (SELECT id FROM college WHERE college_code = 'COS'));
+
+-- CBM Courses
+INSERT INTO course (course_code, course_name, college_id) VALUES
+('BSHM', 'Bachelor of Science in Hospitality Management', (SELECT id FROM college WHERE college_code = 'CBM')),
+('BSOAD', 'Bachelor of Science in Office Administration', (SELECT id FROM college WHERE college_code = 'CBM'));
+
+-- CFMS Courses
+INSERT INTO course (course_code, course_name, college_id) VALUES
+('BSF', 'Bachelor of Science in Fisheries', (SELECT id FROM college WHERE college_code = 'CFMS')),
+('BSMB', 'Bachelor of Science in Marine Biology', (SELECT id FROM college WHERE college_code = 'CFMS'));
+
+-- CTE Courses
+INSERT INTO course (course_code, course_name, college_id) VALUES
+('BEED', 'Bachelor of Elementary Education', (SELECT id FROM college WHERE college_code = 'CTE')),
+('BSED-SCI', 'Bachelor of Secondary Education major in Science', (SELECT id FROM college WHERE college_code = 'CTE')),
+('BSED-MATH', 'Bachelor of Secondary Education major in Mathematics', (SELECT id FROM college WHERE college_code = 'CTE')),
+('BSED-FIL', 'Bachelor of Secondary Education major in Filipino', (SELECT id FROM college WHERE college_code = 'CTE')),
+('BSED-ENG', 'Bachelor of Secondary Education major in English', (SELECT id FROM college WHERE college_code = 'CTE'));
+
+-- =====================================================
+-- INSERT CATEGORIES
+-- =====================================================
+
+-- Sports categories
+INSERT INTO category (category_name, category_type) VALUES
+('Basketball', 'Sport'),
+('Volleyball', 'Sport'),
+('Football', 'Sport'),
+('Soccer', 'Sport'),
+('Baseball', 'Sport'),
+('Softball', 'Sport'),
+('Swimming', 'Sport'),
+('Table Tennis', 'Sport'),
+('Badminton', 'Sport'),
+('Tennis', 'Sport'),
+('Chess', 'Sport'),
+('Esports', 'Sport'),
+('Taekwondo', 'Sport'),
+('Karate', 'Sport'),
+('Judo', 'Sport'),
+('Boxing', 'Sport'),
+('Weightlifting', 'Sport'),
+('Archery', 'Sport');
+
+-- Athletic categories
+INSERT INTO category (category_name, category_type) VALUES
+('100m Sprint', 'Athletic'),
+('200m Sprint', 'Athletic'),
+('400m Run', 'Athletic'),
+('800m Run', 'Athletic'),
+('1500m Run', 'Athletic'),
+('5000m Run', 'Athletic'),
+('100m Hurdles', 'Athletic'),
+('400m Hurdles', 'Athletic'),
+('High Jump', 'Athletic'),
+('Long Jump', 'Athletic'),
+('Triple Jump', 'Athletic'),
+('Pole Vault', 'Athletic'),
+('Shot Put', 'Athletic'),
+('Discus Throw', 'Athletic'),
+('Javelin Throw', 'Athletic'),
+('Hammer Throw', 'Athletic'),
+('4x100m Relay', 'Athletic'),
+('4x400m Relay', 'Athletic'),
+('Marathon', 'Athletic'),
+('Walkathon', 'Athletic');
+
+-- Culture and Arts categories
+INSERT INTO category (category_name, category_type) VALUES
+('Dance Troupe', 'Culture and Arts'),
+('Pageant', 'Culture and Arts'),
+('Choir Competition', 'Culture and Arts'),
+('Band Competition', 'Culture and Arts'),
+('Solo Singing', 'Culture and Arts'),
+('Duet Singing', 'Culture and Arts'),
+('Instrumental Solo', 'Culture and Arts'),
+('Instrumental Ensemble', 'Culture and Arts'),
+('Painting Competition', 'Culture and Arts'),
+('Drawing Competition', 'Culture and Arts'),
+('Digital Arts', 'Culture and Arts'),
+('Photography Contest', 'Culture and Arts'),
+('Film Making', 'Culture and Arts'),
+('Short Film Competition', 'Culture and Arts'),
+('Poetry Writing', 'Culture and Arts'),
+('Essay Writing', 'Culture and Arts'),
+('Short Story Writing', 'Culture and Arts'),
+('Spoken Poetry', 'Culture and Arts'),
+('Theater Play', 'Culture and Arts'),
+('Drama Competition', 'Culture and Arts'),
+('Monologue Contest', 'Culture and Arts'),
+('Impromptu Speech', 'Culture and Arts'),
+('Debate Competition', 'Culture and Arts'),
+('Quiz Bee', 'Culture and Arts'),
+('Battle of the Brains', 'Culture and Arts'),
+('Poster Making', 'Culture and Arts'),
+('Slogan Making', 'Culture and Arts'),
+('Calligraphy', 'Culture and Arts'),
+('Graffiti Art', 'Culture and Arts'),
+('Scrapbooking', 'Culture and Arts'),
+('Costume Design', 'Culture and Arts'),
+('Makeup Artistry', 'Culture and Arts'),
+('Culinary Arts', 'Culture and Arts'),
+('Baking Competition', 'Culture and Arts'),
+('Food Styling', 'Culture and Arts');
+
+-- =====================================================
+-- FUNCTION TO GET CURRENT SCHOOL YEAR
+-- =====================================================
+
+CREATE OR REPLACE FUNCTION get_current_school_year()
+RETURNS VARCHAR(20) AS $$
+DECLARE
+    current_year INTEGER;
+    next_year INTEGER;
+BEGIN
+    current_year := EXTRACT(YEAR FROM CURRENT_DATE);
+    next_year := current_year + 1;
+    
+    -- If current month is June or later, school year is current_year-next_year
+    IF EXTRACT(MONTH FROM CURRENT_DATE) >= 6 THEN
+        RETURN current_year || '-' || next_year;
+    ELSE
+        -- Otherwise, previous year-current_year
+        RETURN (current_year - 1) || '-' || current_year;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- INSERT ACTIVITIES
+-- =====================================================
+
+INSERT INTO activity (activity_name, activity_type, competition_level, school_year) VALUES
+('BISU Intramurals 2024', 'sports', 'Intramurals', '2024-2025'),
+('BISU Intramurals 2025', 'sports', 'Intramurals', '2025-2026'),
+('BISU Intramurals 2026', 'sports', 'Intramurals', '2026-2027'),
+('Provincial SCUAA Meet 2024', 'sports', 'Provincial', '2024-2025'),
+('Provincial SCUAA Meet 2025', 'sports', 'Provincial', '2025-2026'),
+('Regional SCUAA Meet 2024', 'sports', 'Regional', '2024-2025'),
+('Regional SCUAA Meet 2025', 'sports', 'Regional', '2025-2026'),
+('National SCUAA Meet 2024', 'sports', 'National', '2024-2025'),
+('National SCUAA Meet 2025', 'sports', 'National', '2025-2026'),
+('International University Games 2024', 'sports', 'International', '2024-2025'),
+('BISU Cultural Night 2024', 'cultural', 'Intramurals', '2024-2025'),
+('BISU Cultural Night 2025', 'cultural', 'Intramurals', '2025-2026'),
+('BISU Arts Festival 2024', 'cultural', 'Intramurals', '2024-2025'),
+('Provincial Cultural Competition 2024', 'cultural', 'Provincial', '2024-2025'),
+('Provincial Cultural Competition 2025', 'cultural', 'Provincial', '2025-2026'),
+('Regional Cultural Festival 2024', 'cultural', 'Regional', '2024-2025'),
+('Regional Cultural Festival 2025', 'cultural', 'Regional', '2025-2026'),
+('National Culture and Arts Competition 2024', 'cultural', 'National', '2024-2025'),
+('National Culture and Arts Competition 2025', 'cultural', 'National', '2025-2026'),
+('International Cultural Exchange 2024', 'cultural', 'International', '2024-2025');
+
+-- =====================================================
+-- INSERT STUDENTS (50 students with email, names)
+-- =====================================================
+
+DO $$
+DECLARE
+    first_names TEXT[] := ARRAY['John Michael', 'Maria', 'Christian', 'Sophia', 'James', 'Isabella', 'Daniel', 'Angel', 'David', 'Sofia', 
+                                'Maricel', 'Ronald', 'Jennifer', 'Mark', 'Catherine', 'Joseph', 'Patricia', 'Kevin', 'Andrea', 'Paul',
+                                'Rica', 'Vincent', 'Theresa', 'Edward', 'Melissa', 'Richard', 'Kathleen', 'Jericho', 'Geraldine', 'Francis',
+                                'Lorraine', 'Albert', 'Janice', 'Patrick', 'Marilyn', 'Ramon', 'Cecilia', 'Rogelio', 'Imelda', 'Nelson',
+                                'Eduardo', 'Luzviminda', 'Fernando', 'Gloria', 'Hector', 'Irene', 'Jaime', 'Karen', 'Leo', 'Myla'];
+    last_names TEXT[] := ARRAY['Santos', 'Reyes', 'Garcia', 'Dela Cruz', 'Fernandez', 'Mendoza', 'Villanueva', 'Gonzales', 'Ramirez', 'Torres',
+                               'Flores', 'Castillo', 'Rivera', 'Lopez', 'Aguilar', 'Perez', 'Ramos', 'Morales', 'Cruz', 'Bautista',
+                               'Navarro', 'Mercado', 'Vergara', 'Santiago', 'Yap', 'Lim', 'Tan', 'Chua', 'Ong', 'Go',
+                               'Sy', 'Uy', 'Co', 'Dy', 'Lao', 'Yu', 'Ching', 'Ang', 'Cheng', 'King',
+                               'Aquino', 'Bautista', 'Cruz', 'Dizon', 'Eusebio', 'Fernandez', 'Gutierrez', 'Hernandez', 'Ignacio', 'Javier'];
+    course_list INT[];
+    i INT;
+    course_id_val INT;
+    college_code_val VARCHAR(20);
+BEGIN
+    -- Get all course IDs
+    SELECT ARRAY(SELECT id FROM course ORDER BY id) INTO course_list;
+    
+    FOR i IN 1..50 LOOP
+        -- Insert User
+        INSERT INTO "User" (email, password, usertype, created_at, first_name, last_name) 
+        VALUES ('student' || i || '@bisu.edu.ph', '$2y$10$YourHashHere', 'student', NOW(), first_names[i], last_names[i]);
+        
+        -- Assign course based on distribution
+        CASE 
+            WHEN i <= 10 THEN -- COS Students
+                SELECT id INTO course_id_val FROM course WHERE course_code IN ('BSCS', 'BSES') 
+                ORDER BY random() LIMIT 1;
+                college_code_val := 'COS';
+            WHEN i <= 25 THEN -- CTE Students (15 students)
+                SELECT id INTO course_id_val FROM course WHERE course_code IN ('BEED', 'BSED-SCI', 'BSED-MATH', 'BSED-FIL', 'BSED-ENG')
+                ORDER BY random() LIMIT 1;
+                college_code_val := 'CTE';
+            WHEN i <= 40 THEN -- CBM Students (15 students)
+                SELECT id INTO course_id_val FROM course WHERE course_code IN ('BSHM', 'BSOAD')
+                ORDER BY random() LIMIT 1;
+                college_code_val := 'CBM';
+            ELSE -- CFMS Students (10 students)
+                SELECT id INTO course_id_val FROM course WHERE course_code IN ('BSF', 'BSMB')
+                ORDER BY random() LIMIT 1;
+                college_code_val := 'CFMS';
+        END CASE;
+        
+        -- Insert Student
+        INSERT INTO student (yr_level, user_id, course_id) 
+        VALUES ((floor(random() * 4) + 1)::INT, 
+                (SELECT id FROM "User" WHERE email = 'student' || i || '@bisu.edu.ph'),
+                course_id_val);
+    END LOOP;
+END $$;
+
+-- =====================================================
+-- INSERT COACHES
+-- =====================================================
+
+INSERT INTO "User" (email, password, usertype, created_at, first_name, last_name) VALUES
+('coach.sports1@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'Robert', 'Johnson'),
+('coach.sports2@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'Michael', 'Williams'),
+('coach.sports3@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'David', 'Brown'),
+('coach.athletic1@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'Sarah', 'Davis'),
+('coach.athletic2@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'James', 'Miller'),
+('coach.cultural1@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'Maria', 'Garcia'),
+('coach.cultural2@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'Patricia', 'Rodriguez'),
+('coach.cultural3@bisu.edu.ph', '$2y$10$YourHashHere', 'coach', NOW(), 'Jennifer', 'Martinez');
+
+INSERT INTO coach (user_id) VALUES
+((SELECT id FROM "User" WHERE email = 'coach.sports1@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.sports2@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.sports3@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.athletic1@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.athletic2@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.cultural1@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.cultural2@bisu.edu.ph')),
+((SELECT id FROM "User" WHERE email = 'coach.cultural3@bisu.edu.ph'));
+
+-- =====================================================
+-- INSERT CONTESTS (Sample - Add more as needed)
+-- =====================================================
+
+INSERT INTO contest (name, activity_id, category_id, contest_status) VALUES
+-- Basketball
+('Basketball - Men''s Division', (SELECT id FROM activity WHERE activity_name = 'BISU Intramurals 2024'), (SELECT id FROM category WHERE category_name = 'Basketball'), 'active'),
+('Basketball Championship', (SELECT id FROM activity WHERE activity_name = 'Provincial SCUAA Meet 2024'), (SELECT id FROM category WHERE category_name = 'Basketball'), 'active'),
+-- Volleyball
+('Volleyball - Men''s Division', (SELECT id FROM activity WHERE activity_name = 'BISU Intramurals 2024'), (SELECT id FROM category WHERE category_name = 'Volleyball'), 'active'),
+('Volleyball Provincial Championship', (SELECT id FROM activity WHERE activity_name = 'Provincial SCUAA Meet 2024'), (SELECT id FROM category WHERE category_name = 'Volleyball'), 'active'),
+-- Track Events
+('100m Sprint - Men', (SELECT id FROM activity WHERE activity_name = 'BISU Intramurals 2024'), (SELECT id FROM category WHERE category_name = '100m Sprint'), 'active'),
+('100m Sprint - Women', (SELECT id FROM activity WHERE activity_name = 'BISU Intramurals 2024'), (SELECT id FROM category WHERE category_name = '100m Sprint'), 'active'),
+('200m Sprint', (SELECT id FROM activity WHERE activity_name = 'Provincial SCUAA Meet 2024'), (SELECT id FROM category WHERE category_name = '200m Sprint'), 'active'),
+-- Cultural
+('Dance Troupe Competition', (SELECT id FROM activity WHERE activity_name = 'BISU Cultural Night 2024'), (SELECT id FROM category WHERE category_name = 'Dance Troupe'), 'active'),
+('Choir Competition', (SELECT id FROM activity WHERE activity_name = 'BISU Cultural Night 2024'), (SELECT id FROM category WHERE category_name = 'Choir Competition'), 'active');
+
+-- =====================================================
+-- INSERT TEAMS
+-- =====================================================
+
+INSERT INTO team (team_name, coach_id, contest_id) VALUES
+('COS Basketball Warriors', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.sports1@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Basketball - Men''s Division')),
+('CTE Basketball Titans', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.sports1@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Basketball - Men''s Division')),
+('BISU Basketball Team', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.sports1@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Basketball Championship')),
+('COS Volleyball Spikers', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.sports3@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Volleyball - Men''s Division')),
+('BISU Volleyball Provincial', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.athletic2@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Volleyball Provincial Championship')),
+('Track and Field Team A', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.athletic1@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = '100m Sprint - Men')),
+('Track and Field Team B', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.athletic1@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = '100m Sprint - Women')),
+('Track and Field Team C', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.athletic2@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = '200m Sprint')),
+('COS Dance Crew', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.cultural1@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Dance Troupe Competition')),
+('BISU Chorale', (SELECT id FROM coach WHERE user_id = (SELECT id FROM "User" WHERE email = 'coach.cultural2@bisu.edu.ph')), 
+ (SELECT id FROM contest WHERE name = 'Choir Competition'));
+
+-- =====================================================
+-- INSERT PARTICIPATIONS WITH RANKINGS (Sample)
+-- =====================================================
+
+DO $$
+DECLARE
+    team_record RECORD;
+    student_record RECORD;
+    rank_index INT;
+    rankings_text TEXT[];
+BEGIN
+    -- For COS Basketball Warriors (Champion)
+    FOR team_record IN SELECT id, team_name FROM team WHERE team_name = 'COS Basketball Warriors' LOOP
+        rank_index := 0;
+        FOR student_record IN 
+            SELECT s.id FROM student s
+            JOIN course c ON s.course_id = c.id
+            JOIN college col ON c.college_id = col.id
+            WHERE col.college_code = 'COS'
+            LIMIT 10
+        LOOP
+            INSERT INTO participation (student_id, team_id, membership_status, created_at, ranking) 
+            VALUES (student_record.id, team_record.id, 'active', '2024-08-01'::TIMESTAMP, 'Champion');
+        END LOOP;
+    END LOOP;
+    
+    -- For CTE Basketball Titans (1st Runner Up)
+    FOR team_record IN SELECT id, team_name FROM team WHERE team_name = 'CTE Basketball Titans' LOOP
+        FOR student_record IN 
+            SELECT s.id FROM student s
+            JOIN course c ON s.course_id = c.id
+            JOIN college col ON c.college_id = col.id
+            WHERE col.college_code = 'CTE'
+            LIMIT 10
+        LOOP
+            INSERT INTO participation (student_id, team_id, membership_status, created_at, ranking) 
+            VALUES (student_record.id, team_record.id, 'active', '2024-08-01'::TIMESTAMP, '1st Runner Up');
+        END LOOP;
+    END LOOP;
+    
+    -- For Track and Field - assign individual rankings
+    FOR team_record IN SELECT id, team_name FROM team WHERE team_name LIKE 'Track and Field%' LOOP
+        rankings_text := ARRAY['1st Place', '2nd Place', '3rd Place', '4th Place', '5th Place', '6th Place', '7th Place', '8th Place'];
+        rank_index := 1;
+        FOR student_record IN SELECT id FROM student LIMIT 8 LOOP
+            INSERT INTO participation (student_id, team_id, membership_status, created_at, ranking) 
+            VALUES (student_record.id, team_record.id, 'active', '2024-09-01'::TIMESTAMP, rankings_text[rank_index]);
+            rank_index := rank_index + 1;
+        END LOOP;
+    END LOOP;
+    
+    -- For Dance Crew (1st Place)
+    FOR team_record IN SELECT id, team_name FROM team WHERE team_name = 'COS Dance Crew' LOOP
+        FOR student_record IN SELECT id FROM student LIMIT 10 LOOP
+            INSERT INTO participation (student_id, team_id, membership_status, created_at, ranking) 
+            VALUES (student_record.id, team_record.id, 'active', '2024-09-10'::TIMESTAMP, '1st Place');
+        END LOOP;
+    END LOOP;
+    
+    -- For Chorale (2nd Place)
+    FOR team_record IN SELECT id, team_name FROM team WHERE team_name = 'BISU Chorale' LOOP
+        FOR student_record IN SELECT id FROM student OFFSET 10 LIMIT 15 LOOP
+            INSERT INTO participation (student_id, team_id, membership_status, created_at, ranking) 
+            VALUES (student_record.id, team_record.id, 'active', '2024-09-10'::TIMESTAMP, '2nd Place');
+        END LOOP;
+    END LOOP;
+    
+    -- Add random additional participations
+    FOR student_record IN SELECT id FROM student LOOP
+        -- Add each student to 1-2 additional random teams
+        FOR team_record IN 
+            SELECT id FROM team 
+            WHERE id NOT IN (SELECT team_id FROM participation WHERE student_id = student_record.id)
+            ORDER BY random() 
+            LIMIT (floor(random() * 2) + 1)::INT
+        LOOP
+            INSERT INTO participation (student_id, team_id, membership_status, created_at, ranking) 
+            VALUES (student_record.id, team_record.id, 'active', 
+                    ('2024-01-01'::TIMESTAMP + (random() * 300)::INT * INTERVAL '1 day'),
+                    CASE WHEN random() < 0.3 THEN 
+                         CASE floor(random() * 5)::INT
+                             WHEN 0 THEN 'Participant'
+                             WHEN 1 THEN 'Finalist'
+                             WHEN 2 THEN '1st Place'
+                             WHEN 3 THEN '2nd Place'
+                             ELSE '3rd Place'
+                         END
+                    ELSE NULL END);
+        END LOOP;
+    END LOOP;
+END $$;
+
+-- =====================================================
+-- INSERT ANNOUNCEMENTS (Sample)
+-- =====================================================
+
+INSERT INTO announcement (title, content, announcement_type, author_id, is_published, created_at, admin_type, school_year) VALUES
+('BISU Intramurals 2024 Opening', 'The BISU Intramurals 2024 will officially open on August 15, 2024. All students are encouraged to participate.', 'event', 
+ (SELECT id FROM "User" WHERE email = 'coach.sports1@bisu.edu.ph' LIMIT 1), true, NOW(), 'sports', '2024-2025'),
+('Cultural Night Auditions', 'Auditions for the BISU Cultural Night 2024 will be held on July 20-25, 2024 at the University Auditorium.', 'announcement',
+ (SELECT id FROM "User" WHERE email = 'coach.cultural1@bisu.edu.ph' LIMIT 1), true, NOW(), 'cultural', '2024-2025'),
+('SCUAA Provincial Meet Results', 'Congratulations to all our athletes who won in the SCUAA Provincial Meet 2024!', 'result',
+ (SELECT id FROM "User" WHERE email = 'coach.sports2@bisu.edu.ph' LIMIT 1), true, NOW(), 'sports', '2024-2025');
+
+-- =====================================================
+-- VERIFICATION QUERIES
+-- =====================================================
+
+-- Check all tables
+SELECT 'Colleges' as table_name, COUNT(*) as count FROM college
+UNION ALL
+SELECT 'Courses', COUNT(*) FROM course
+UNION ALL
+SELECT 'Users', COUNT(*) FROM "User"
+UNION ALL
+SELECT 'Students', COUNT(*) FROM student
+UNION ALL
+SELECT 'Coaches', COUNT(*) FROM coach
+UNION ALL
+SELECT 'Categories', COUNT(*) FROM category
+UNION ALL
+SELECT 'Activities', COUNT(*) FROM activity
+UNION ALL
+SELECT 'Contests', COUNT(*) FROM contest
+UNION ALL
+SELECT 'Teams', COUNT(*) FROM team
+UNION ALL
+SELECT 'Participations', COUNT(*) FROM participation;
+
+-- Sample student data with course and college
+SELECT 
+    u.first_name || ' ' || u.last_name as student_name,
+    u.email,
+    c.course_code,
+    c.course_name,
+    col.college_code,
+    col.college_name,
+    s.yr_level as year_level
+FROM student s
+JOIN "User" u ON s.user_id = u.id
+JOIN course c ON s.course_id = c.id
+JOIN college col ON c.college_id = col.id
+LIMIT 20;
+
+-- Sample participations with rankings
+SELECT 
+    u.first_name || ' ' || u.last_name as student_name,
+    c.course_code,
+    col.college_code,
+    t.team_name,
+    cat.category_name,
+    p.ranking,
+    p.membership_status
+FROM participation p
+JOIN student s ON p.student_id = s.id
+JOIN "User" u ON s.user_id = u.id
+JOIN course c ON s.course_id = c.id
+JOIN college col ON c.college_id = col.id
+JOIN team t ON p.team_id = t.id
+JOIN contest cont ON t.contest_id = cont.id
+JOIN category cat ON cont.category_id = cat.id
+WHERE p.ranking IS NOT NULL
+LIMIT 30;
